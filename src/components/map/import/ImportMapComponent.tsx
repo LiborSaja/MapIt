@@ -10,6 +10,7 @@ import { Style, Stroke, Circle, Fill } from "ol/style";
 import { Feature } from "ol";
 import { Point, LineString } from "ol/geom";
 import "./ImportMapComponent.css";
+import { Text } from "ol/style";
 
 const ImportMapComponent: React.FC = () => {
     const mapRef = useRef<HTMLDivElement | null>(null);
@@ -19,7 +20,7 @@ const ImportMapComponent: React.FC = () => {
     const [currentAction, setCurrentAction] = useState<string>("line");
     const [drawingFeature, setDrawingFeature] = useState<Feature | null>(null);
 
-    // Inicializace mapy
+    // ------------------------------------------------------------------------------------------------------Inicializace mapy
     useEffect(() => {
         if (!mapRef.current) return;
 
@@ -74,7 +75,7 @@ const ImportMapComponent: React.FC = () => {
         return () => mapObject.setTarget(undefined);
     }, []);
 
-    // Funkce pro zahájení kreslení
+    // ----------------------------------------------------------------------------------------------Funkce pro zahájení kreslení
     const handleMouseDown = (event: any) => {
         if (!map || !lineSource || event.button !== 2) return; // Kreslení pouze při pravém tlačítku
 
@@ -92,7 +93,7 @@ const ImportMapComponent: React.FC = () => {
         event.preventDefault();
     };
 
-    // Funkce pro aktualizaci kreslené linky
+    // --------------------------------------------------------------------------------------Funkce pro aktualizaci kreslené linky
     const handleMouseMove = (event: any) => {
         // Kontrola, zda se kreslí pravým tlačítkem
         if (!map || !drawingFeature || event.buttons !== 2) return;
@@ -108,10 +109,10 @@ const ImportMapComponent: React.FC = () => {
         geometry.setCoordinates([startCoordinate, coordinate]);
     };
 
-    // Funkce pro ukončení kreslení
+    // ----------------------------------------------------------------------------------------------Funkce pro ukončení kreslení
     const handleMouseUp = (event: any) => {
         if (!map || !drawingFeature || !pointSource || event.button !== 2)
-            return; // Dokončení kreslení pouze při pravém tlačítku
+            return;
 
         const pixel = map.getEventPixel(event);
         const coordinate = map.getCoordinateFromPixel(pixel);
@@ -120,12 +121,45 @@ const ImportMapComponent: React.FC = () => {
         const geometry = drawingFeature.getGeometry() as LineString;
         const coordinates = geometry.getCoordinates();
 
+        // Začátek linky
         const startPoint = new Feature({
             geometry: new Point(coordinates[0]),
         });
+        startPoint.setStyle(
+            new Style({
+                image: new Circle({
+                    radius: 6,
+                    fill: new Fill({ color: "red" }),
+                    stroke: new Stroke({ color: "white", width: 2 }),
+                }),
+                text: new Text({
+                    text: "Start",
+                    offsetY: -15, // Posun textu nad bod
+                    fill: new Fill({ color: "black" }),
+                    stroke: new Stroke({ color: "white", width: 2 }),
+                }),
+            })
+        );
+
+        // Konec linky
         const endPoint = new Feature({
             geometry: new Point(coordinate),
         });
+        endPoint.setStyle(
+            new Style({
+                image: new Circle({
+                    radius: 6,
+                    fill: new Fill({ color: "red" }),
+                    stroke: new Stroke({ color: "white", width: 2 }),
+                }),
+                text: new Text({
+                    text: "Konec",
+                    offsetY: -15, // Posun textu nad bod
+                    fill: new Fill({ color: "black" }),
+                    stroke: new Stroke({ color: "white", width: 2 }),
+                }),
+            })
+        );
 
         pointSource.addFeatures([startPoint, endPoint]);
 
