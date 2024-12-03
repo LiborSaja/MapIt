@@ -1,37 +1,183 @@
-import React, { useEffect } from "react";
-import "ol/ol.css"; // Styl OpenLayers
-import { Map, View } from "ol"; // Základní třídy OpenLayers
-import { Tile as TileLayer } from "ol/layer"; // Vrstva dlaždic
-import { OSM } from "ol/source"; // Zdroj mapových dat (OpenStreetMap)
+import React, { useEffect, useRef, useState } from "react";
+import "ol/ol.css";
+import { Map, View } from "ol";
+import TileLayer from "ol/layer/Tile";
+import OSM from "ol/source/OSM";
+import VectorLayer from "ol/layer/Vector";
+import VectorSource from "ol/source/Vector";
 import { fromLonLat } from "ol/proj";
+import { Style, Stroke, Circle, Fill } from "ol/style";
+import { Feature } from "ol";
+import { Point, LineString } from "ol/geom";
+import "./ImportMapComponent.css";
 
 const ImportMapComponent: React.FC = () => {
+    const mapRef = useRef<HTMLDivElement | null>(null);
+    const [map, setMap] = useState<Map | null>(null);
+    const [lineSource, setLineSource] = useState<VectorSource | null>(null);
+    const [pointSource, setPointSource] = useState<VectorSource | null>(null);
+    const [currentAction, setCurrentAction] = useState<string>("line");
+    const [drawingFeature, setDrawingFeature] = useState<Feature | null>(null);
+
+    // Inicializace mapy
     useEffect(() => {
-        // Inicializace mapy
-        const map = new Map({
-            target: "map", // ID elementu, kam se mapa vykreslí
-            layers: [
-                new TileLayer({
-                    source: new OSM(), // Zdroj: OpenStreetMap
+        if (!mapRef.current) return;
+
+        // Vektorová vrstva pro linky
+        const lineVectorSource = new VectorSource();
+        const lineVectorLayer = new VectorLayer({
+            source: lineVectorSource,
+            style: new Style({
+                stroke: new Stroke({
+                    color: "blue",
+                    width: 3,
                 }),
-            ],
-            view: new View({
-                center: fromLonLat([16.626263448084117, 49.19754791432539]),
-                zoom: 13, // Výchozí úroveň přiblížení
             }),
         });
 
-        // Vyčištění mapy při odpojení komponenty
-        return () => map.setTarget(undefined);
+        // Vektorová vrstva pro body
+        const pointVectorSource = new VectorSource();
+        const pointVectorLayer = new VectorLayer({
+            source: pointVectorSource,
+            style: new Style({
+                image: new Circle({
+                    radius: 6,
+                    fill: new Fill({ color: "red" }),
+                    stroke: new Stroke({ color: "white", width: 2 }),
+                }),
+            }),
+        });
+
+        // Vytvoření mapy
+        const mapObject = new Map({
+            target: mapRef.current,
+            layers: [
+                new TileLayer({
+                    source: new OSM(),
+                }),
+                lineVectorLayer,
+                pointVectorLayer,
+            ],
+            view: new View({
+                center: fromLonLat([16.626263, 49.197547]), // Souřadnice Brna
+                zoom: 12,
+            }),
+        });
+
+        // Uložíme vrstvy do stavu
+        setLineSource(lineVectorSource);
+        setPointSource(pointVectorSource);
+
+        // Uložíme mapu do stavu
+        setMap(mapObject);
+
+        return () => mapObject.setTarget(undefined);
     }, []);
 
+    // Funkce pro zahájení kreslení
+    const handleMouseDown = (event: any) => {
+        if (!map || !lineSource || event.button !== 2) return; // Kreslení pouze při pravém tlačítku
+
+        const pixel = map.getEventPixel(event);
+        const coordinate = map.getCoordinateFromPixel(pixel);
+
+        // Vytvoříme novou linii se začátečním bodem
+        const lineFeature = new Feature({
+            geometry: new LineString([coordinate, coordinate]),
+        });
+        lineSource.addFeature(lineFeature);
+        setDrawingFeature(lineFeature);
+
+        // Zakázání kontextového menu při kreslení
+        event.preventDefault();
+    };
+
+    // Funkce pro aktualizaci kreslené linky
+    const handleMouseMove = (event: any) => {
+        // Kontrola, zda se kreslí pravým tlačítkem
+        if (!map || !drawingFeature || event.buttons !== 2) return;
+
+        const pixel = map.getEventPixel(event);
+        const coordinate = map.getCoordinateFromPixel(pixel);
+
+        // Získání existující geometrie linie
+        const geometry = drawingFeature.getGeometry() as LineString;
+        const startCoordinate = geometry.getFirstCoordinate(); // Začátek linky
+
+        // Aktualizace linky: pouze dva body (start + aktuální pozice)
+        geometry.setCoordinates([startCoordinate, coordinate]);
+    };
+
+    // Funkce pro ukončení kreslení
+    const handleMouseUp = (event: any) => {
+        if (!map || !drawingFeature || !pointSource || event.button !== 2)
+            return; // Dokončení kreslení pouze při pravém tlačítku
+
+        const pixel = map.getEventPixel(event);
+        const coordinate = map.getCoordinateFromPixel(pixel);
+
+        // Přidáme body na začátku a na konci linie
+        const geometry = drawingFeature.getGeometry() as LineString;
+        const coordinates = geometry.getCoordinates();
+
+        const startPoint = new Feature({
+            geometry: new Point(coordinates[0]),
+        });
+        const endPoint = new Feature({
+            geometry: new Point(coordinate),
+        });
+
+        pointSource.addFeatures([startPoint, endPoint]);
+
+        // Ukončíme kreslení
+        setDrawingFeature(null);
+    };
+
     return (
-        <div
-            id="map" // ID, na které se OpenLayers mapuje
-            style={{
-                width: "100%",
-                height: "37vw",
-            }}></div>
+        <div>
+            {/* Mapový kontejner */}
+            <div
+                className="map-style"
+                ref={mapRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onContextMenu={(e) => e.preventDefault()} // Zakázání kontextového menu
+            ></div>
+
+            {/* Tlačítka pro akce */}
+            <div className="mt-3">
+                <button
+                    className={`btn btn-success me-2 ${
+                        currentAction === "line" ? "active" : ""
+                    }`}
+                    onClick={() => setCurrentAction("line")}>
+                    Přidat linii
+                </button>
+                <button
+                    className={`btn btn-primary me-2 ${
+                        currentAction === "move" ? "active" : ""
+                    }`}
+                    onClick={() => setCurrentAction("move")}>
+                    Přemístit bod
+                </button>
+                <button
+                    className={`btn btn-warning me-2 ${
+                        currentAction === "delete" ? "active" : ""
+                    }`}
+                    onClick={() => setCurrentAction("delete")}>
+                    Smazat linii
+                </button>
+                <button
+                    className="btn btn-danger"
+                    onClick={() => {
+                        lineSource?.clear();
+                        pointSource?.clear();
+                    }}>
+                    Smazat vše
+                </button>
+            </div>
+        </div>
     );
 };
 
