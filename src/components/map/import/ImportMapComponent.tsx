@@ -75,21 +75,93 @@ const ImportMapComponent: React.FC = () => {
         return () => mapObject.setTarget(undefined);
     }, []);
 
+    //------------------------------------------------------------------------------------------------napojení na zvýrazněný bod
+    useEffect(() => {
+        if (!map) return;
+
+        // Listener pro detekci najetí myši na body
+        const handlePointerMove = (event: any) => {
+            const pixel = map.getEventPixel(event);
+            const features = map.getFeaturesAtPixel(pixel);
+
+            // Najdeme bod, pokud existuje
+            const pointFeature = features?.find(
+                (feature) => feature.getGeometry() instanceof Point
+            );
+
+            if (pointFeature) {
+                // Zvýrazníme bod při najetí
+                map.getTargetElement().style.cursor = "pointer";
+            } else {
+                // Vrátíme kurzor na normální, pokud nejsme nad bodem
+                map.getTargetElement().style.cursor = "";
+            }
+        };
+
+        map.on("pointermove", handlePointerMove);
+
+        // Vyčištění listeneru při odpojení komponenty
+        return () => {
+            map.un("pointermove", handlePointerMove);
+        };
+    }, [map]);
+
     // ----------------------------------------------------------------------------------------------Funkce pro zahájení kreslení
     const handleMouseDown = (event: any) => {
-        if (!map || !lineSource || event.button !== 2) return; // Kreslení pouze při pravém tlačítku
+        if (!map || !lineSource || event.button !== 2) return;
 
         const pixel = map.getEventPixel(event);
-        const coordinate = map.getCoordinateFromPixel(pixel);
+        const features = map.getFeaturesAtPixel(pixel);
 
-        // Vytvoříme novou linii se začátečním bodem
-        const lineFeature = new Feature({
-            geometry: new LineString([coordinate, coordinate]),
-        });
-        lineSource.addFeature(lineFeature);
-        setDrawingFeature(lineFeature);
+        // Najdeme bod pod kurzorem
+        const pointFeature = features?.find(
+            (feature) => feature.getGeometry() instanceof Point
+        );
 
-        // Zakázání kontextového menu při kreslení
+        if (pointFeature) {
+            const pointCoord = (
+                pointFeature.getGeometry() as Point
+            ).getCoordinates();
+
+            // Začneme kreslit z existujícího bodu
+            const newLine = new Feature({
+                geometry: new LineString([pointCoord, pointCoord]),
+            });
+
+            lineSource.addFeature(newLine);
+            setDrawingFeature(newLine);
+        } else {
+            // Vytvoříme novou polyčáru, pokud nebyl nalezen bod
+            const coordinate = map.getCoordinateFromPixel(pixel);
+            const newLine = new Feature({
+                geometry: new LineString([coordinate, coordinate]),
+            });
+
+            lineSource.addFeature(newLine);
+            setDrawingFeature(newLine);
+
+            // Přidáme nový start bod
+            const startPoint = new Feature({
+                geometry: new Point(coordinate),
+            });
+            startPoint.setStyle(
+                new Style({
+                    image: new Circle({
+                        radius: 6,
+                        fill: new Fill({ color: "red" }),
+                        stroke: new Stroke({ color: "white", width: 2 }),
+                    }),
+                    text: new Text({
+                        text: "start",
+                        offsetY: -15,
+                        fill: new Fill({ color: "black" }),
+                        stroke: new Stroke({ color: "white", width: 2 }),
+                    }),
+                })
+            );
+            pointSource!.addFeature(startPoint);
+        }
+
         event.preventDefault();
     };
 
