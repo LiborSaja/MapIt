@@ -1,0 +1,12 @@
+.navbar-brand img {
+    margin-right: 10px;
+}
+
+.navbar-nav .nav-link {
+    font-size: 1.2vw;
+    font-weight: bold;
+}
+
+.bi-compass {
+    font-size: 3vw;
+}
