@@ -6,7 +6,7 @@ import OSM from "ol/source/OSM";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat, transform } from "ol/proj";
-import { Draw } from "ol/interaction";
+import { DragPan, Draw, Modify, MouseWheelZoom, Select } from "ol/interaction";
 import "./ImportMapComponent.css";
 import Style from "ol/style/Style";
 import Stroke from "ol/style/Stroke";
@@ -17,6 +17,7 @@ import { Point, LineString } from "ol/geom";
 import { Feature } from "ol";
 import { getDistance } from "ol/sphere";
 import { PolylineData } from "../../../interfaces/Interface";
+import { click } from "ol/events/condition";
 
 const ImportMapComponent: React.FC = () => {
     const mapRef = useRef<HTMLDivElement | null>(null);
@@ -83,12 +84,24 @@ const ImportMapComponent: React.FC = () => {
         };
     }, []);
 
+    //--------------------------------------------------------------------------------------------------------------------------
+    //------------------------------------------------------------ USEEFFECT kreslení ------------------------------------------
+    //--------------------------------------------------------------------------------------------------------------------------
+
     useEffect(() => {
         if (!map || !lineSource || !pointSource) return;
 
-        // Vyčistíme stávající interakce
-        map.getInteractions().clear();
+        // Přiřazení výchozích interakcí (posouvání a zoomování)
+        map.getInteractions().forEach((interaction) => {
+            if (
+                interaction instanceof DragPan ||
+                interaction instanceof MouseWheelZoom
+            ) {
+                interaction.setActive(true);
+            }
+        });
 
+        //------------------------------------------------------------------------------------------------režim Návrh
         if (currentAction === "line") {
             const drawInteraction = new Draw({
                 source: lineSource,
@@ -295,6 +308,55 @@ const ImportMapComponent: React.FC = () => {
                     "contextmenu",
                     handleRightClick
                 );
+            };
+            // --------------------------------------------------------------------------------------------------režim inspect
+        } else if (currentAction === "inspect") {
+            const selectInteraction = new Select({
+                condition: click,
+            });
+
+            map.addInteraction(selectInteraction);
+
+            selectInteraction.on("select", (event) => {
+                const selectedFeatures = event.selected;
+                if (selectedFeatures.length > 0) {
+                    const feature = selectedFeatures[0];
+                    console.log("Vybraný prvek:", feature.getGeometry());
+                }
+            });
+
+            return () => {
+                map.removeInteraction(selectInteraction);
+            };
+            // --------------------------------------------------------------------------------------------------- režim mazání
+        } else if (currentAction === "delete") {
+            const selectInteraction = new Select({
+                condition: click,
+            });
+
+            map.addInteraction(selectInteraction);
+
+            selectInteraction.on("select", (event) => {
+                const selectedFeatures = event.selected;
+                selectedFeatures.forEach((feature) => {
+                    lineSource?.removeFeature(feature);
+                    pointSource?.removeFeature(feature);
+                });
+            });
+
+            return () => {
+                map.removeInteraction(selectInteraction);
+            };
+        } else if (currentAction === "move") {
+            //----------------------------------------------------------------------------------------------- Režim modifikace
+            const modifyInteraction = new Modify({
+                source: pointSource,
+            });
+
+            map.addInteraction(modifyInteraction);
+
+            return () => {
+                map.removeInteraction(modifyInteraction);
             };
         }
     }, [map, lineSource, pointSource, currentAction]);
