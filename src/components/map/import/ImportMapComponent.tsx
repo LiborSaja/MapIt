@@ -273,21 +273,37 @@ const ImportMapComponent: React.FC = () => {
         };
     }, [map, lineSource, pointSource]);
 
-    const calculateLineProperties = (
-        start: [number, number],
-        end: [number, number]
-    ) => {
-        const length = (getDistance(start, end) / 1000).toFixed(2); // Délka v km
+    function calculateLineProperties(
+        coord1: [number, number],
+        coord2: [number, number]
+    ) {
+        const [lon1, lat1] = coord1;
+        const [lon2, lat2] = coord2;
 
-        const dx = end[0] - start[0];
-        const dy = end[1] - start[1];
-        const azimuth = (Math.atan2(dy, dx) * (180 / Math.PI) + 360) % 360;
+        // Výpočet rozdílu souřadnic
+        const deltaLon = lon2 - lon1;
+        const deltaLat = lat2 - lat1;
+
+        // Výpočet azimutu v radiánech
+        let azimuth = Math.atan2(deltaLon, deltaLat) * (180 / Math.PI); // Převod na stupně
+
+        // Normalizace do rozsahu 0°–360°
+        if (azimuth < 0) {
+            azimuth += 360;
+        }
+
+        // Výpočet délky linie (v kilometrech)
+        const earthRadius = 6371; // Poloměr Země v km
+        const distance =
+            Math.sqrt(deltaLat ** 2 + deltaLon ** 2) *
+            (Math.PI / 180) *
+            earthRadius;
 
         return {
-            azimuth: azimuth.toFixed(2), // Azimut ve stupních
-            length, // Délka v km
+            azimuth: azimuth.toFixed(2), // Azimut ve stupních (2 desetinná místa)
+            length: distance.toFixed(2), // Délka v kilometrech (2 desetinná místa)
         };
-    };
+    }
 
     const calculateAngle = (
         prev: [number, number],
@@ -312,28 +328,35 @@ const ImportMapComponent: React.FC = () => {
                 <div className="col-9">
                     <div className="mt-3">
                         <button
-                            className={`btn btn-success me-2 ${
+                            className={`btn btn-outline-secondary me-2 ${
+                                currentAction === "inspect" ? "active" : ""
+                            }`}
+                            onClick={() => setCurrentAction("inspect")}>
+                            Inspekce prvků
+                        </button>
+                        <button
+                            className={`btn btn-outline-success me-2 ${
                                 currentAction === "line" ? "active" : ""
                             }`}
                             onClick={() => setCurrentAction("line")}>
                             Přidat linii
                         </button>
                         <button
-                            className={`btn btn-primary me-2 ${
+                            className={`btn btn-outline-primary me-2 ${
                                 currentAction === "move" ? "active" : ""
                             }`}
                             onClick={() => setCurrentAction("move")}>
                             Přemístit bod
                         </button>
                         <button
-                            className={`btn btn-warning me-2 ${
+                            className={`btn btn-outline-warning me-2 ${
                                 currentAction === "delete" ? "active" : ""
                             }`}
                             onClick={() => setCurrentAction("delete")}>
                             Smazat linii
                         </button>
                         <button
-                            className="btn btn-danger"
+                            className="btn btn-outline-danger"
                             onClick={() => {
                                 lineSource?.clear();
                                 pointSource?.clear();
@@ -347,7 +370,7 @@ const ImportMapComponent: React.FC = () => {
                         onContextMenu={(e) => e.preventDefault()}></div>
                 </div>
 
-                <div className="col-3 scrollable-section">
+                <div className="col-3">
                     <div className="row">
                         <div className="col">
                             <h2 className="mb-3">Parametry</h2>
@@ -368,7 +391,7 @@ const ImportMapComponent: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="row">
+                    <div className="row scrollable-section">
                         <div className="col">
                             <h2>Data</h2>
                             {polylines.map((polyline, index) => {
@@ -416,6 +439,7 @@ const ImportMapComponent: React.FC = () => {
                                                                 {value.angle}°
                                                             </p>
                                                         )}
+                                                        <hr />
                                                     </div>
                                                 );
                                             }
@@ -436,6 +460,7 @@ const ImportMapComponent: React.FC = () => {
                                                             Length:{" "}
                                                             {value.length} km
                                                         </p>
+                                                        <hr />
                                                     </div>
                                                 );
                                             }

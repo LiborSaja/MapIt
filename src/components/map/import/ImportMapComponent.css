@@ -5,7 +5,7 @@
 }
 
 .scrollable-section {
-    max-height: 40vw;
+    max-height: 34vw;
     overflow-y: auto;
     padding-right: 10px;
 }
