@@ -92,7 +92,7 @@ const ImportMapComponent: React.FC = () => {
                     number,
                     number
                 ][];
-                updateVertices(coordinates);
+                addVertices(coordinates);
             }
         });
 
@@ -114,11 +114,8 @@ const ImportMapComponent: React.FC = () => {
         };
     }, [map, lineSource, pointSource]);
 
-    const updateVertices = (coordinates: [number, number][]) => {
+    const addVertices = (coordinates: [number, number][]) => {
         if (!pointSource) return;
-
-        // Vyčištění předchozích bodů
-        pointSource.clear();
 
         // Přidání bodů
         coordinates.forEach((coord, index) => {
@@ -138,8 +135,8 @@ const ImportMapComponent: React.FC = () => {
                                 index === 0
                                     ? "green"
                                     : index === coordinates.length - 1
-                                    ? "red"
-                                    : "yellow",
+                                    ? "blue"
+                                    : "red",
                         }),
                         stroke: new Stroke({ color: "white", width: 2 }),
                     }),
