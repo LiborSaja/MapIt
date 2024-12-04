@@ -3,3 +3,9 @@
     height: 37vw;
     border: 1px solid black;
 }
+
+.scrollable-section {
+    max-height: 40vw;
+    overflow-y: auto;
+    padding-right: 10px;
+}

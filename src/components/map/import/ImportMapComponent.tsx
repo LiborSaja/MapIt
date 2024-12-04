@@ -184,43 +184,92 @@ const ImportMapComponent: React.FC = () => {
     }, [map, lineSource, pointSource]);
 
     return (
-        <div>
-            <div
-                className="map-style"
-                ref={mapRef}
-                onContextMenu={(e) => e.preventDefault()} // Zakázání kontextového menu
-            ></div>
+        <div className="container-fluid">
+            <div className="row">
+                <div className="col-9">
+                    <div className="mt-3">
+                        <button
+                            className={`btn btn-success me-2 ${
+                                currentAction === "line" ? "active" : ""
+                            }`}
+                            onClick={() => setCurrentAction("line")}>
+                            Přidat linii
+                        </button>
+                        <button
+                            className={`btn btn-primary me-2 ${
+                                currentAction === "move" ? "active" : ""
+                            }`}
+                            onClick={() => setCurrentAction("move")}>
+                            Přemístit bod
+                        </button>
+                        <button
+                            className={`btn btn-warning me-2 ${
+                                currentAction === "delete" ? "active" : ""
+                            }`}
+                            onClick={() => setCurrentAction("delete")}>
+                            Smazat linii
+                        </button>
+                        <button
+                            className="btn btn-danger"
+                            onClick={() => {
+                                lineSource?.clear();
+                                pointSource?.clear();
+                            }}>
+                            Smazat vše
+                        </button>
+                    </div>
+                    <div
+                        className="map-style"
+                        ref={mapRef}
+                        onContextMenu={(e) => e.preventDefault()}></div>
+                </div>
 
-            <div className="mt-3">
-                <button
-                    className={`btn btn-success me-2 ${
-                        currentAction === "line" ? "active" : ""
-                    }`}
-                    onClick={() => setCurrentAction("line")}>
-                    Přidat linii
-                </button>
-                <button
-                    className={`btn btn-primary me-2 ${
-                        currentAction === "move" ? "active" : ""
-                    }`}
-                    onClick={() => setCurrentAction("move")}>
-                    Přemístit bod
-                </button>
-                <button
-                    className={`btn btn-warning me-2 ${
-                        currentAction === "delete" ? "active" : ""
-                    }`}
-                    onClick={() => setCurrentAction("delete")}>
-                    Smazat linii
-                </button>
-                <button
-                    className="btn btn-danger"
-                    onClick={() => {
-                        lineSource?.clear();
-                        pointSource?.clear();
-                    }}>
-                    Smazat vše
-                </button>
+                <div className="col-3 scrollable-section">
+                    <div className="row">
+                        <div className="col">
+                            <h2 className="mb-3">Parametry</h2>
+                        </div>
+                    </div>
+                    <div className="row">
+                        <div className="col">
+                            <div className="mb-3">
+                                <label className="me-2">Jednotky:</label>
+                                <select className="form-select d-inline w-auto">
+                                    <option value="km">kilometry</option>
+                                    <option value="mil">míle</option>
+                                </select>
+                                <select className="form-select d-inline w-auto">
+                                    <option value="°">stupně</option>
+                                    <option value="rad">radiány</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="row">
+                        <div className="col">
+                            <p>Bod001</p>
+                            <p>Lat: 28.123456</p>
+                            <p>Lon: 19.789654</p>
+
+                            <p>Linie001</p>
+                            <p>Azimuth: Severovýchod 20°</p>
+                            <p>Vzdálenost: 123km</p>
+
+                            <p>Bod002</p>
+                            <p>Lat: 28.456321</p>
+                            <p>Lon: 19.852396</p>
+                            <p>Vnitřní úhel: 30°</p>
+
+                            <p>Linie002</p>
+                            <p>Azimuth: Východ 45°</p>
+                            <p>Vzdálenost: 25km</p>
+
+                            <p>Bod003</p>
+                            <p>Lat: 28.785463</p>
+                            <p>Lon: 19.971354</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
