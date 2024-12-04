@@ -16,7 +16,11 @@ import Text from "ol/style/Text";
 import { Point, LineString } from "ol/geom";
 import { Feature } from "ol";
 import { getDistance } from "ol/sphere";
-import { PolylineData } from "../../../interfaces/Interface";
+import {
+    LineData,
+    PointData,
+    PolylineData,
+} from "../../../interfaces/Interface";
 import { click } from "ol/events/condition";
 
 const ImportMapComponent: React.FC = () => {
@@ -30,8 +34,8 @@ const ImportMapComponent: React.FC = () => {
         { id: string; type: "point" | "line"; data: any }[]
     >([]);
     const [polylines, setPolylines] = useState<PolylineData[]>([]);
-    const [distanceUnit, setDistanceUnit] = useState("km"); // "km" nebo "mil"
-    const [angleUnit, setAngleUnit] = useState("°"); // "°" nebo "rad"
+    const [distanceUnit, setDistanceUnit] = useState<"km" | "mil">("km");
+    const [angleUnit, setAngleUnit] = useState<"°" | "rad">("°");
 
     useEffect(() => {
         if (!mapRef.current) return;
@@ -102,6 +106,7 @@ const ImportMapComponent: React.FC = () => {
         });
 
         //------------------------------------------------------------------------------------------------režim Návrh
+        //režim návrh
         if (currentAction === "line") {
             const drawInteraction = new Draw({
                 source: lineSource,
@@ -410,6 +415,20 @@ const ImportMapComponent: React.FC = () => {
         return angle.toFixed(2); // Úhel ve stupních
     };
 
+    const convertDistance = (value: string): string => {
+        const distance = parseFloat(value);
+        return distanceUnit === "km"
+            ? distance.toFixed(2) // Pokud jsou vybrány kilometry
+            : (distance * 0.621371).toFixed(2); // Převod na míle
+    };
+
+    const convertAngle = (value: string): string => {
+        const angle = parseFloat(value);
+        return angleUnit === "°"
+            ? angle.toFixed(2) // Pokud jsou vybrány stupně
+            : ((angle * Math.PI) / 180).toFixed(2); // Převod na radiány
+    };
+
     return (
         <div className="container-fluid">
             <div className="row">
@@ -468,11 +487,25 @@ const ImportMapComponent: React.FC = () => {
                         <div className="col">
                             <div className="mb-3">
                                 <label className="me-2">Jednotky:</label>
-                                <select className="form-select d-inline w-auto">
+                                <select
+                                    className="form-select d-inline w-auto"
+                                    value={distanceUnit}
+                                    onChange={(e) =>
+                                        setDistanceUnit(
+                                            e.target.value as "km" | "mil"
+                                        )
+                                    }>
                                     <option value="km">kilometry</option>
                                     <option value="mil">míle</option>
                                 </select>
-                                <select className="form-select d-inline w-auto">
+                                <select
+                                    className="form-select d-inline w-auto"
+                                    value={angleUnit}
+                                    onChange={(e) =>
+                                        setAngleUnit(
+                                            e.target.value as "°" | "rad"
+                                        )
+                                    }>
                                     <option value="°">stupně</option>
                                     <option value="rad">radiány</option>
                                 </select>
@@ -484,15 +517,13 @@ const ImportMapComponent: React.FC = () => {
                             <h2>Data</h2>
                             {polylines.map((polyline, index) => {
                                 const polylineKey = `Polyline${index + 1}`;
-                                const polylineData = polyline[polylineKey]?.[0]; // Bezpečný přístup k datům
+                                const polylineData = polyline[polylineKey]?.[0];
 
-                                if (!polylineData) return null; // Pokud data neexistují, nic nevykreslíme
+                                if (!polylineData) return null;
 
-                                // Extrakce a seřazení klíčů v pořadí přidání
                                 const sortedKeys = Object.keys(
                                     polylineData
                                 ).sort((a, b) => {
-                                    // Extrahujeme číselné indexy
                                     const aIndex = parseInt(
                                         a.match(/\d+/)?.[0] || "0",
                                         10
@@ -501,7 +532,7 @@ const ImportMapComponent: React.FC = () => {
                                         b.match(/\d+/)?.[0] || "0",
                                         10
                                     );
-                                    return aIndex - bIndex; // Třídíme podle indexu
+                                    return aIndex - bIndex;
                                 });
 
                                 return (
@@ -510,21 +541,32 @@ const ImportMapComponent: React.FC = () => {
                                         {sortedKeys.map((key, i) => {
                                             const value = polylineData[key];
 
-                                            // Kontrola typu: Point nebo Line
+                                            // Kontrola typu: PointData
                                             if (
                                                 key.startsWith("Point") &&
                                                 "lat" in value &&
                                                 "lon" in value
                                             ) {
+                                                const pointValue =
+                                                    value as PointData; // Přetypování
                                                 return (
                                                     <div key={`point-${i}`}>
                                                         <p>{key}</p>
-                                                        <p>Lat: {value.lat}</p>
-                                                        <p>Lon: {value.lon}</p>
-                                                        {value.angle && (
+                                                        <p>
+                                                            Lat:{" "}
+                                                            {pointValue.lat}
+                                                        </p>
+                                                        <p>
+                                                            Lon:{" "}
+                                                            {pointValue.lon}
+                                                        </p>
+                                                        {pointValue.angle && (
                                                             <p>
                                                                 Angle:{" "}
-                                                                {value.angle}°
+                                                                {convertAngle(
+                                                                    pointValue.angle
+                                                                )}{" "}
+                                                                {angleUnit}
                                                             </p>
                                                         )}
                                                         <hr />
@@ -532,21 +574,30 @@ const ImportMapComponent: React.FC = () => {
                                                 );
                                             }
 
+                                            // Kontrola typu: LineData
                                             if (
                                                 key.startsWith("Line") &&
                                                 "azimuth" in value &&
                                                 "length" in value
                                             ) {
+                                                const lineValue =
+                                                    value as LineData; // Přetypování
                                                 return (
                                                     <div key={`line-${i}`}>
                                                         <p>{key}</p>
                                                         <p>
                                                             Azimuth:{" "}
-                                                            {value.azimuth}°
+                                                            {convertAngle(
+                                                                lineValue.azimuth
+                                                            )}{" "}
+                                                            {angleUnit}
                                                         </p>
                                                         <p>
                                                             Length:{" "}
-                                                            {value.length} km
+                                                            {convertDistance(
+                                                                lineValue.length
+                                                            )}{" "}
+                                                            {distanceUnit}
                                                         </p>
                                                         <hr />
                                                     </div>
