@@ -1,10 +1,16 @@
-// typ pro body a linie na mapě
-export interface MapElement {
-    id: string;
-    type: "point" | "line";
-    lat?: number; // Pro bod
-    lon?: number; // Pro bod
-    angle?: number; // Pro bod (vnitřní úhel)
-    azimuth?: string; // Pro linii
-    distance?: number; // Pro linii
+export interface PointData {
+    lat: string; // Zeměpisná šířka
+    lon: string; // Zeměpisná délka
+    angle: string | null; // Úhel (null, pokud není vypočten)
+}
+
+export interface LineData {
+    azimuth: string; // Azimut (ve stupních)
+    length: string; // Délka (v km)
+}
+
+export interface PolylineData {
+    [key: string]: {
+        [key: string]: PointData | LineData;
+    }[];
 }

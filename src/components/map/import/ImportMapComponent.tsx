@@ -5,7 +5,7 @@ import TileLayer from "ol/layer/Tile";
 import OSM from "ol/source/OSM";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import { fromLonLat } from "ol/proj";
+import { fromLonLat, transform } from "ol/proj";
 import { Draw } from "ol/interaction";
 import "./ImportMapComponent.css";
 import Style from "ol/style/Style";
@@ -15,6 +15,8 @@ import Fill from "ol/style/Fill";
 import Text from "ol/style/Text";
 import { Point, LineString } from "ol/geom";
 import { Feature } from "ol";
+import { getDistance } from "ol/sphere";
+import { PolylineData } from "../../../interfaces/Interface";
 
 const ImportMapComponent: React.FC = () => {
     const mapRef = useRef<HTMLDivElement | null>(null);
@@ -23,6 +25,10 @@ const ImportMapComponent: React.FC = () => {
     const [pointSource, setPointSource] = useState<VectorSource | null>(null);
     const drawRef = useRef<Draw | null>(null);
     const [currentAction, setCurrentAction] = useState<string>("line");
+    const [featuresData, setFeaturesData] = useState<
+        { id: string; type: "point" | "line"; data: any }[]
+    >([]);
+    const [polylines, setPolylines] = useState<PolylineData[]>([]);
 
     useEffect(() => {
         if (!mapRef.current) return;
@@ -86,16 +92,84 @@ const ImportMapComponent: React.FC = () => {
         map.addInteraction(drawInteraction);
         drawRef.current = drawInteraction;
 
-        // Listener na ukončení kreslení
+        // listener pro ukončení kreslení
         drawInteraction.on("drawend", (event) => {
-            const geometry = event.feature.getGeometry() as LineString; // Přetypování na LineString
-            if (geometry?.getType() === "LineString") {
-                const coordinates = geometry.getCoordinates() as [
-                    number,
-                    number
-                ][];
+            const geometry = event.feature.getGeometry(); // Automatické rozpoznání typu geometrie
 
-                // Přidání bodů na začátek a konec
+            if (geometry?.getType() === "LineString") {
+                const coordinates = (
+                    geometry as LineString
+                ).getCoordinates() as [number, number][];
+
+                // Struktura dat pro aktuální polylinii
+                const polyline: { [key: string]: any } = {};
+                const polylineId = `Polyline${polylines.length + 1}`;
+
+                coordinates.forEach((coord, index) => {
+                    const pointId = `Point${String(index + 1).padStart(
+                        3,
+                        "0"
+                    )}`;
+
+                    // Převod souřadnic do EPSG:4326
+                    const transformedCoord = transform(
+                        coord as [number, number],
+                        "EPSG:3857",
+                        "EPSG:4326"
+                    ) as [number, number];
+                    const [lon, lat] = transformedCoord;
+
+                    // Přidání bodu
+                    polyline[pointId] = {
+                        lat: lat.toFixed(6),
+                        lon: lon.toFixed(6),
+                        angle:
+                            index > 0 && index < coordinates.length - 1
+                                ? calculateAngle(
+                                      transform(
+                                          coordinates[index - 1] as [
+                                              number,
+                                              number
+                                          ],
+                                          "EPSG:3857",
+                                          "EPSG:4326"
+                                      ) as [number, number],
+                                      transformedCoord,
+                                      transform(
+                                          coordinates[index + 1] as [
+                                              number,
+                                              number
+                                          ],
+                                          "EPSG:3857",
+                                          "EPSG:4326"
+                                      ) as [number, number]
+                                  )
+                                : null, // Úhel jen mezi prostředními body
+                    };
+
+                    // Přidání linie mezi aktuálním a předchozím bodem
+                    if (index > 0) {
+                        const lineId = `Line${String(index).padStart(3, "0")}`;
+                        polyline[lineId] = calculateLineProperties(
+                            transform(
+                                coordinates[index - 1] as [number, number],
+                                "EPSG:3857",
+                                "EPSG:4326"
+                            ) as [number, number],
+                            transformedCoord
+                        );
+                    }
+                });
+
+                // Přidání aktuální polylinie do stavu
+                setPolylines((prev) => [
+                    ...prev,
+                    {
+                        [`Polyline${prev.length + 1}`]: [polyline], // Každá polylinie obsahuje pole s daty
+                    },
+                ]);
+
+                // Přidání stylů na mapu (začátek a konec)
                 const startFeature = new Feature({
                     geometry: new Point(coordinates[0]),
                 });
@@ -103,7 +177,6 @@ const ImportMapComponent: React.FC = () => {
                     geometry: new Point(coordinates[coordinates.length - 1]),
                 });
 
-                // Styl "start" a "konec"
                 startFeature.setStyle(
                     new Style({
                         image: new Circle({
@@ -116,7 +189,7 @@ const ImportMapComponent: React.FC = () => {
                             font: "12px Arial",
                             fill: new Fill({ color: "black" }),
                             stroke: new Stroke({ color: "white", width: 2 }),
-                            offsetY: -10, // Umístění nad bod
+                            offsetY: -10,
                         }),
                     })
                 );
@@ -133,7 +206,7 @@ const ImportMapComponent: React.FC = () => {
                             font: "12px Arial",
                             fill: new Fill({ color: "black" }),
                             stroke: new Stroke({ color: "white", width: 2 }),
-                            offsetY: -10, // Umístění nad bod
+                            offsetY: -10,
                         }),
                     })
                 );
@@ -142,6 +215,13 @@ const ImportMapComponent: React.FC = () => {
 
                 // Přidání žlutých bodů na zlomy
                 coordinates.slice(1, -1).forEach((coord) => {
+                    const transformedCoord = transform(
+                        coord as [number, number],
+                        "EPSG:3857",
+                        "EPSG:4326"
+                    ) as [number, number];
+                    const [lon, lat] = transformedCoord;
+
                     const middleFeature = new Feature({
                         geometry: new Point(coord),
                     });
@@ -155,6 +235,16 @@ const ImportMapComponent: React.FC = () => {
                                     color: "white",
                                     width: 1,
                                 }),
+                            }),
+                            text: new Text({
+                                text: `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+                                font: "10px Arial",
+                                fill: new Fill({ color: "black" }),
+                                stroke: new Stroke({
+                                    color: "white",
+                                    width: 1,
+                                }),
+                                offsetY: -10,
                             }),
                         })
                     );
@@ -182,6 +272,39 @@ const ImportMapComponent: React.FC = () => {
             );
         };
     }, [map, lineSource, pointSource]);
+
+    const calculateLineProperties = (
+        start: [number, number],
+        end: [number, number]
+    ) => {
+        const length = (getDistance(start, end) / 1000).toFixed(2); // Délka v km
+
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        const azimuth = (Math.atan2(dy, dx) * (180 / Math.PI) + 360) % 360;
+
+        return {
+            azimuth: azimuth.toFixed(2), // Azimut ve stupních
+            length, // Délka v km
+        };
+    };
+
+    const calculateAngle = (
+        prev: [number, number],
+        current: [number, number],
+        next: [number, number]
+    ): string => {
+        const v1 = [prev[0] - current[0], prev[1] - current[1]];
+        const v2 = [next[0] - current[0], next[1] - current[1]];
+
+        const dotProduct = v1[0] * v2[0] + v1[1] * v2[1];
+        const magnitude1 = Math.sqrt(v1[0] ** 2 + v1[1] ** 2);
+        const magnitude2 = Math.sqrt(v2[0] ** 2 + v2[1] ** 2);
+
+        const angle =
+            Math.acos(dotProduct / (magnitude1 * magnitude2)) * (180 / Math.PI);
+        return angle.toFixed(2); // Úhel ve stupních
+    };
 
     return (
         <div className="container-fluid">
@@ -247,26 +370,81 @@ const ImportMapComponent: React.FC = () => {
                     </div>
                     <div className="row">
                         <div className="col">
-                            <p>Bod001</p>
-                            <p>Lat: 28.123456</p>
-                            <p>Lon: 19.789654</p>
+                            <h2>Data</h2>
+                            {polylines.map((polyline, index) => {
+                                const polylineKey = `Polyline${index + 1}`;
+                                const polylineData = polyline[polylineKey]?.[0]; // Bezpečný přístup k datům
 
-                            <p>Linie001</p>
-                            <p>Azimuth: Severovýchod 20°</p>
-                            <p>Vzdálenost: 123km</p>
+                                if (!polylineData) return null; // Pokud data neexistují, nic nevykreslíme
 
-                            <p>Bod002</p>
-                            <p>Lat: 28.456321</p>
-                            <p>Lon: 19.852396</p>
-                            <p>Vnitřní úhel: 30°</p>
+                                // Extrakce a seřazení klíčů v pořadí přidání
+                                const sortedKeys = Object.keys(
+                                    polylineData
+                                ).sort((a, b) => {
+                                    // Extrahujeme číselné indexy
+                                    const aIndex = parseInt(
+                                        a.match(/\d+/)?.[0] || "0",
+                                        10
+                                    );
+                                    const bIndex = parseInt(
+                                        b.match(/\d+/)?.[0] || "0",
+                                        10
+                                    );
+                                    return aIndex - bIndex; // Třídíme podle indexu
+                                });
 
-                            <p>Linie002</p>
-                            <p>Azimuth: Východ 45°</p>
-                            <p>Vzdálenost: 25km</p>
+                                return (
+                                    <div key={`polyline-${index}`}>
+                                        <h3>{polylineKey}</h3>
+                                        {sortedKeys.map((key, i) => {
+                                            const value = polylineData[key];
 
-                            <p>Bod003</p>
-                            <p>Lat: 28.785463</p>
-                            <p>Lon: 19.971354</p>
+                                            // Kontrola typu: Point nebo Line
+                                            if (
+                                                key.startsWith("Point") &&
+                                                "lat" in value &&
+                                                "lon" in value
+                                            ) {
+                                                return (
+                                                    <div key={`point-${i}`}>
+                                                        <p>{key}</p>
+                                                        <p>Lat: {value.lat}</p>
+                                                        <p>Lon: {value.lon}</p>
+                                                        {value.angle && (
+                                                            <p>
+                                                                Angle:{" "}
+                                                                {value.angle}°
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (
+                                                key.startsWith("Line") &&
+                                                "azimuth" in value &&
+                                                "length" in value
+                                            ) {
+                                                return (
+                                                    <div key={`line-${i}`}>
+                                                        <p>{key}</p>
+                                                        <p>
+                                                            Azimuth:{" "}
+                                                            {value.azimuth}°
+                                                        </p>
+                                                        <p>
+                                                            Length:{" "}
+                                                            {value.length} km
+                                                        </p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return null;
+                                        })}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
