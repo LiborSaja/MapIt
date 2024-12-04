@@ -29,6 +29,8 @@ const ImportMapComponent: React.FC = () => {
         { id: string; type: "point" | "line"; data: any }[]
     >([]);
     const [polylines, setPolylines] = useState<PolylineData[]>([]);
+    const [distanceUnit, setDistanceUnit] = useState("km"); // "km" nebo "mil"
+    const [angleUnit, setAngleUnit] = useState("°"); // "°" nebo "rad"
 
     useEffect(() => {
         if (!mapRef.current) return;
@@ -84,194 +86,218 @@ const ImportMapComponent: React.FC = () => {
     useEffect(() => {
         if (!map || !lineSource || !pointSource) return;
 
-        const drawInteraction = new Draw({
-            source: lineSource,
-            type: "LineString",
-        });
+        // Vyčistíme stávající interakce
+        map.getInteractions().clear();
 
-        map.addInteraction(drawInteraction);
-        drawRef.current = drawInteraction;
+        if (currentAction === "line") {
+            const drawInteraction = new Draw({
+                source: lineSource,
+                type: "LineString",
+            });
 
-        // listener pro ukončení kreslení
-        drawInteraction.on("drawend", (event) => {
-            const geometry = event.feature.getGeometry(); // Automatické rozpoznání typu geometrie
+            map.addInteraction(drawInteraction);
+            drawRef.current = drawInteraction;
 
-            if (geometry?.getType() === "LineString") {
-                const coordinates = (
-                    geometry as LineString
-                ).getCoordinates() as [number, number][];
+            // listener pro ukončení kreslení
+            drawInteraction.on("drawend", (event) => {
+                const geometry = event.feature.getGeometry(); // Automatické rozpoznání typu geometrie
 
-                // Struktura dat pro aktuální polylinii
-                const polyline: { [key: string]: any } = {};
-                const polylineId = `Polyline${polylines.length + 1}`;
+                if (geometry?.getType() === "LineString") {
+                    const coordinates = (
+                        geometry as LineString
+                    ).getCoordinates() as [number, number][];
 
-                coordinates.forEach((coord, index) => {
-                    const pointId = `Point${String(index + 1).padStart(
-                        3,
-                        "0"
-                    )}`;
+                    // Struktura dat pro aktuální polylinii
+                    const polyline: { [key: string]: any } = {};
+                    const polylineId = `Polyline${polylines.length + 1}`;
 
-                    // Převod souřadnic do EPSG:4326
-                    const transformedCoord = transform(
-                        coord as [number, number],
-                        "EPSG:3857",
-                        "EPSG:4326"
-                    ) as [number, number];
-                    const [lon, lat] = transformedCoord;
+                    coordinates.forEach((coord, index) => {
+                        const pointId = `Point${String(index + 1).padStart(
+                            3,
+                            "0"
+                        )}`;
 
-                    // Přidání bodu
-                    polyline[pointId] = {
-                        lat: lat.toFixed(6),
-                        lon: lon.toFixed(6),
-                        angle:
-                            index > 0 && index < coordinates.length - 1
-                                ? calculateAngle(
-                                      transform(
-                                          coordinates[index - 1] as [
-                                              number,
-                                              number
-                                          ],
-                                          "EPSG:3857",
-                                          "EPSG:4326"
-                                      ) as [number, number],
-                                      transformedCoord,
-                                      transform(
-                                          coordinates[index + 1] as [
-                                              number,
-                                              number
-                                          ],
-                                          "EPSG:3857",
-                                          "EPSG:4326"
-                                      ) as [number, number]
-                                  )
-                                : null, // Úhel jen mezi prostředními body
-                    };
+                        // Převod souřadnic do EPSG:4326
+                        const transformedCoord = transform(
+                            coord as [number, number],
+                            "EPSG:3857",
+                            "EPSG:4326"
+                        ) as [number, number];
+                        const [lon, lat] = transformedCoord;
 
-                    // Přidání linie mezi aktuálním a předchozím bodem
-                    if (index > 0) {
-                        const lineId = `Line${String(index).padStart(3, "0")}`;
-                        polyline[lineId] = calculateLineProperties(
-                            transform(
-                                coordinates[index - 1] as [number, number],
-                                "EPSG:3857",
-                                "EPSG:4326"
-                            ) as [number, number],
-                            transformedCoord
-                        );
-                    }
-                });
+                        // Přidání bodu
+                        polyline[pointId] = {
+                            lat: lat.toFixed(6),
+                            lon: lon.toFixed(6),
+                            angle:
+                                index > 0 && index < coordinates.length - 1
+                                    ? calculateAngle(
+                                          transform(
+                                              coordinates[index - 1] as [
+                                                  number,
+                                                  number
+                                              ],
+                                              "EPSG:3857",
+                                              "EPSG:4326"
+                                          ) as [number, number],
+                                          transformedCoord,
+                                          transform(
+                                              coordinates[index + 1] as [
+                                                  number,
+                                                  number
+                                              ],
+                                              "EPSG:3857",
+                                              "EPSG:4326"
+                                          ) as [number, number]
+                                      )
+                                    : null, // Úhel jen mezi prostředními body
+                        };
 
-                // Přidání aktuální polylinie do stavu
-                setPolylines((prev) => [
-                    ...prev,
-                    {
-                        [`Polyline${prev.length + 1}`]: [polyline], // Každá polylinie obsahuje pole s daty
-                    },
-                ]);
-
-                // Přidání stylů na mapu (začátek a konec)
-                const startFeature = new Feature({
-                    geometry: new Point(coordinates[0]),
-                });
-                const endFeature = new Feature({
-                    geometry: new Point(coordinates[coordinates.length - 1]),
-                });
-
-                startFeature.setStyle(
-                    new Style({
-                        image: new Circle({
-                            radius: 5,
-                            fill: new Fill({ color: "green" }),
-                            stroke: new Stroke({ color: "white", width: 1 }),
-                        }),
-                        text: new Text({
-                            text: "start",
-                            font: "12px Arial",
-                            fill: new Fill({ color: "black" }),
-                            stroke: new Stroke({ color: "white", width: 2 }),
-                            offsetY: -10,
-                        }),
-                    })
-                );
-
-                endFeature.setStyle(
-                    new Style({
-                        image: new Circle({
-                            radius: 5,
-                            fill: new Fill({ color: "red" }),
-                            stroke: new Stroke({ color: "white", width: 1 }),
-                        }),
-                        text: new Text({
-                            text: "konec",
-                            font: "12px Arial",
-                            fill: new Fill({ color: "black" }),
-                            stroke: new Stroke({ color: "white", width: 2 }),
-                            offsetY: -10,
-                        }),
-                    })
-                );
-
-                pointSource.addFeatures([startFeature, endFeature]);
-
-                // Přidání žlutých bodů na zlomy
-                coordinates.slice(1, -1).forEach((coord) => {
-                    const transformedCoord = transform(
-                        coord as [number, number],
-                        "EPSG:3857",
-                        "EPSG:4326"
-                    ) as [number, number];
-                    const [lon, lat] = transformedCoord;
-
-                    const middleFeature = new Feature({
-                        geometry: new Point(coord),
+                        // Přidání linie mezi aktuálním a předchozím bodem
+                        if (index > 0) {
+                            const lineId = `Line${String(index).padStart(
+                                3,
+                                "0"
+                            )}`;
+                            polyline[lineId] = calculateLineProperties(
+                                transform(
+                                    coordinates[index - 1] as [number, number],
+                                    "EPSG:3857",
+                                    "EPSG:4326"
+                                ) as [number, number],
+                                transformedCoord
+                            );
+                        }
                     });
 
-                    middleFeature.setStyle(
+                    // Přidání aktuální polylinie do stavu
+                    setPolylines((prev) => [
+                        ...prev,
+                        {
+                            [`Polyline${prev.length + 1}`]: [polyline], // Každá polylinie obsahuje pole s daty
+                        },
+                    ]);
+
+                    // Přidání stylů na mapu (začátek a konec)
+                    const startFeature = new Feature({
+                        geometry: new Point(coordinates[0]),
+                    });
+                    const endFeature = new Feature({
+                        geometry: new Point(
+                            coordinates[coordinates.length - 1]
+                        ),
+                    });
+
+                    startFeature.setStyle(
                         new Style({
                             image: new Circle({
                                 radius: 5,
-                                fill: new Fill({ color: "yellow" }),
+                                fill: new Fill({ color: "green" }),
                                 stroke: new Stroke({
                                     color: "white",
                                     width: 1,
                                 }),
                             }),
                             text: new Text({
-                                text: `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
-                                font: "10px Arial",
+                                text: "start",
+                                font: "12px Arial",
                                 fill: new Fill({ color: "black" }),
                                 stroke: new Stroke({
                                     color: "white",
-                                    width: 1,
+                                    width: 2,
                                 }),
                                 offsetY: -10,
                             }),
                         })
                     );
 
-                    pointSource.addFeature(middleFeature);
-                });
-            }
-        });
+                    endFeature.setStyle(
+                        new Style({
+                            image: new Circle({
+                                radius: 5,
+                                fill: new Fill({ color: "red" }),
+                                stroke: new Stroke({
+                                    color: "white",
+                                    width: 1,
+                                }),
+                            }),
+                            text: new Text({
+                                text: "konec",
+                                font: "12px Arial",
+                                fill: new Fill({ color: "black" }),
+                                stroke: new Stroke({
+                                    color: "white",
+                                    width: 2,
+                                }),
+                                offsetY: -10,
+                            }),
+                        })
+                    );
 
-        // Listener na pravé kliknutí
-        const handleRightClick = (event: MouseEvent) => {
-            event.preventDefault();
-            if (drawRef.current) {
-                drawRef.current.finishDrawing(); // Ukončení kreslení
-            }
-        };
+                    pointSource.addFeatures([startFeature, endFeature]);
 
-        map.getViewport().addEventListener("contextmenu", handleRightClick);
+                    // Přidání žlutých bodů na zlomy
+                    coordinates.slice(1, -1).forEach((coord) => {
+                        const transformedCoord = transform(
+                            coord as [number, number],
+                            "EPSG:3857",
+                            "EPSG:4326"
+                        ) as [number, number];
+                        const [lon, lat] = transformedCoord;
 
-        return () => {
-            map.removeInteraction(drawInteraction);
-            map.getViewport().removeEventListener(
-                "contextmenu",
-                handleRightClick
-            );
-        };
-    }, [map, lineSource, pointSource]);
+                        const middleFeature = new Feature({
+                            geometry: new Point(coord),
+                        });
+
+                        middleFeature.setStyle(
+                            new Style({
+                                image: new Circle({
+                                    radius: 5,
+                                    fill: new Fill({ color: "yellow" }),
+                                    stroke: new Stroke({
+                                        color: "white",
+                                        width: 1,
+                                    }),
+                                }),
+                                text: new Text({
+                                    text: `${lat.toFixed(6)}, ${lon.toFixed(
+                                        6
+                                    )}`,
+                                    font: "10px Arial",
+                                    fill: new Fill({ color: "black" }),
+                                    stroke: new Stroke({
+                                        color: "white",
+                                        width: 1,
+                                    }),
+                                    offsetY: -10,
+                                }),
+                            })
+                        );
+
+                        pointSource.addFeature(middleFeature);
+                    });
+                }
+            });
+
+            // Listener na pravé kliknutí
+            const handleRightClick = (event: MouseEvent) => {
+                event.preventDefault();
+                if (drawRef.current) {
+                    drawRef.current.finishDrawing(); // Ukončení kreslení
+                }
+            };
+
+            map.getViewport().addEventListener("contextmenu", handleRightClick);
+
+            return () => {
+                map.removeInteraction(drawInteraction);
+                map.getViewport().removeEventListener(
+                    "contextmenu",
+                    handleRightClick
+                );
+            };
+        }
+    }, [map, lineSource, pointSource, currentAction]);
 
     function calculateLineProperties(
         coord1: [number, number],
@@ -328,6 +354,13 @@ const ImportMapComponent: React.FC = () => {
                 <div className="col-9">
                     <div className="mt-3">
                         <button
+                            className={`btn btn-outline-success me-2 ${
+                                currentAction === "line" ? "active" : ""
+                            }`}
+                            onClick={() => setCurrentAction("line")}>
+                            Návrh
+                        </button>
+                        <button
                             className={`btn btn-outline-secondary me-2 ${
                                 currentAction === "inspect" ? "active" : ""
                             }`}
@@ -335,18 +368,11 @@ const ImportMapComponent: React.FC = () => {
                             Inspekce prvků
                         </button>
                         <button
-                            className={`btn btn-outline-success me-2 ${
-                                currentAction === "line" ? "active" : ""
-                            }`}
-                            onClick={() => setCurrentAction("line")}>
-                            Přidat linii
-                        </button>
-                        <button
                             className={`btn btn-outline-primary me-2 ${
                                 currentAction === "move" ? "active" : ""
                             }`}
                             onClick={() => setCurrentAction("move")}>
-                            Přemístit bod
+                            Modifikace
                         </button>
                         <button
                             className={`btn btn-outline-warning me-2 ${
