@@ -7,13 +7,14 @@ import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat } from "ol/proj";
 import { Draw } from "ol/interaction";
-import { Feature } from "ol";
-import { Point, LineString } from "ol/geom";
+import "./ImportMapComponent.css";
 import Style from "ol/style/Style";
 import Stroke from "ol/style/Stroke";
 import Circle from "ol/style/Circle";
 import Fill from "ol/style/Fill";
-import "./ImportMapComponent.css";
+import Text from "ol/style/Text";
+import { Point, LineString } from "ol/geom";
+import { Feature } from "ol";
 
 const ImportMapComponent: React.FC = () => {
     const mapRef = useRef<HTMLDivElement | null>(null);
@@ -27,7 +28,7 @@ const ImportMapComponent: React.FC = () => {
         if (!mapRef.current) return;
 
         const vectorSource = new VectorSource();
-        const pointSource = new VectorSource();
+        const pointVectorSource = new VectorSource();
 
         const vectorLayer = new VectorLayer({
             source: vectorSource,
@@ -40,12 +41,12 @@ const ImportMapComponent: React.FC = () => {
         });
 
         const pointLayer = new VectorLayer({
-            source: pointSource,
+            source: pointVectorSource,
             style: new Style({
                 image: new Circle({
-                    radius: 6,
-                    fill: new Fill({ color: "red" }),
-                    stroke: new Stroke({ color: "white", width: 2 }),
+                    radius: 5,
+                    fill: new Fill({ color: "yellow" }),
+                    stroke: new Stroke({ color: "white", width: 1 }),
                 }),
             }),
         });
@@ -67,7 +68,7 @@ const ImportMapComponent: React.FC = () => {
 
         setMap(mapObject);
         setLineSource(vectorSource);
-        setPointSource(pointSource);
+        setPointSource(pointVectorSource);
 
         return () => {
             mapObject.setTarget(undefined);
@@ -85,21 +86,89 @@ const ImportMapComponent: React.FC = () => {
         map.addInteraction(drawInteraction);
         drawRef.current = drawInteraction;
 
+        // Listener na ukončení kreslení
         drawInteraction.on("drawend", (event) => {
-            const geometry = event.feature.getGeometry() as LineString;
-            if (geometry) {
+            const geometry = event.feature.getGeometry() as LineString; // Přetypování na LineString
+            if (geometry?.getType() === "LineString") {
                 const coordinates = geometry.getCoordinates() as [
                     number,
                     number
                 ][];
-                addVertices(coordinates);
+
+                // Přidání bodů na začátek a konec
+                const startFeature = new Feature({
+                    geometry: new Point(coordinates[0]),
+                });
+                const endFeature = new Feature({
+                    geometry: new Point(coordinates[coordinates.length - 1]),
+                });
+
+                // Styl "start" a "konec"
+                startFeature.setStyle(
+                    new Style({
+                        image: new Circle({
+                            radius: 5,
+                            fill: new Fill({ color: "green" }),
+                            stroke: new Stroke({ color: "white", width: 1 }),
+                        }),
+                        text: new Text({
+                            text: "start",
+                            font: "12px Arial",
+                            fill: new Fill({ color: "black" }),
+                            stroke: new Stroke({ color: "white", width: 2 }),
+                            offsetY: -10, // Umístění nad bod
+                        }),
+                    })
+                );
+
+                endFeature.setStyle(
+                    new Style({
+                        image: new Circle({
+                            radius: 5,
+                            fill: new Fill({ color: "red" }),
+                            stroke: new Stroke({ color: "white", width: 1 }),
+                        }),
+                        text: new Text({
+                            text: "konec",
+                            font: "12px Arial",
+                            fill: new Fill({ color: "black" }),
+                            stroke: new Stroke({ color: "white", width: 2 }),
+                            offsetY: -10, // Umístění nad bod
+                        }),
+                    })
+                );
+
+                pointSource.addFeatures([startFeature, endFeature]);
+
+                // Přidání žlutých bodů na zlomy
+                coordinates.slice(1, -1).forEach((coord) => {
+                    const middleFeature = new Feature({
+                        geometry: new Point(coord),
+                    });
+
+                    middleFeature.setStyle(
+                        new Style({
+                            image: new Circle({
+                                radius: 5,
+                                fill: new Fill({ color: "yellow" }),
+                                stroke: new Stroke({
+                                    color: "white",
+                                    width: 1,
+                                }),
+                            }),
+                        })
+                    );
+
+                    pointSource.addFeature(middleFeature);
+                });
             }
         });
 
+        // Listener na pravé kliknutí
         const handleRightClick = (event: MouseEvent) => {
             event.preventDefault();
             if (drawRef.current) {
-                drawRef.current.finishDrawing();
+                drawRef.current.finishDrawing(); // Ukončení kreslení
             }
         };
 
@@ -114,45 +183,13 @@ const ImportMapComponent: React.FC = () => {
         };
     }, [map, lineSource, pointSource]);
 
-    const addVertices = (coordinates: [number, number][]) => {
-        if (!pointSource) return;
-
-        // Přidání bodů
-        coordinates.forEach((coord, index) => {
-            const pointFeature = new Feature({
-                geometry: new Point(coord),
-            });
-
-            pointFeature.setStyle(
-                new Style({
-                    image: new Circle({
-                        radius:
-                            index === 0 || index === coordinates.length - 1
-                                ? 8
-                                : 6,
-                        fill: new Fill({
-                            color:
-                                index === 0
-                                    ? "green"
-                                    : index === coordinates.length - 1
-                                    ? "blue"
-                                    : "red",
-                        }),
-                        stroke: new Stroke({ color: "white", width: 2 }),
-                    }),
-                })
-            );
-
-            pointSource.addFeature(pointFeature);
-        });
-    };
-
     return (
         <div>
             <div
                 className="map-style"
                 ref={mapRef}
-                onContextMenu={(e) => e.preventDefault()}></div>
+                onContextMenu={(e) => e.preventDefault()} // Zakázání kontextového menu
+            ></div>
 
             <div className="mt-3">
                 <button
