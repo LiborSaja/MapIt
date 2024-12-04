@@ -6,28 +6,24 @@ import OSM from "ol/source/OSM";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat } from "ol/proj";
-import { Style, Stroke, Circle, Fill } from "ol/style";
-import { Feature } from "ol";
-import { Point, LineString } from "ol/geom";
+import { Draw } from "ol/interaction";
 import "./ImportMapComponent.css";
-import { Text } from "ol/style";
+import Style from "ol/style/Style";
+import Stroke from "ol/style/Stroke";
 
 const ImportMapComponent: React.FC = () => {
     const mapRef = useRef<HTMLDivElement | null>(null);
     const [map, setMap] = useState<Map | null>(null);
     const [lineSource, setLineSource] = useState<VectorSource | null>(null);
-    const [pointSource, setPointSource] = useState<VectorSource | null>(null);
+    const drawRef = useRef<Draw | null>(null);
     const [currentAction, setCurrentAction] = useState<string>("line");
-    const [drawingFeature, setDrawingFeature] = useState<Feature | null>(null);
 
-    // ------------------------------------------------------------------------------------------------------Inicializace mapy
     useEffect(() => {
         if (!mapRef.current) return;
 
-        // Vektorová vrstva pro linky
-        const lineVectorSource = new VectorSource();
-        const lineVectorLayer = new VectorLayer({
-            source: lineVectorSource,
+        const vectorSource = new VectorSource();
+        const vectorLayer = new VectorLayer({
+            source: vectorSource,
             style: new Style({
                 stroke: new Stroke({
                     color: "blue",
@@ -36,208 +32,57 @@ const ImportMapComponent: React.FC = () => {
             }),
         });
 
-        // Vektorová vrstva pro body
-        const pointVectorSource = new VectorSource();
-        const pointVectorLayer = new VectorLayer({
-            source: pointVectorSource,
-            style: new Style({
-                image: new Circle({
-                    radius: 6,
-                    fill: new Fill({ color: "red" }),
-                    stroke: new Stroke({ color: "white", width: 2 }),
-                }),
-            }),
-        });
-
-        // Vytvoření mapy
         const mapObject = new Map({
             target: mapRef.current,
             layers: [
                 new TileLayer({
                     source: new OSM(),
                 }),
-                lineVectorLayer,
-                pointVectorLayer,
+                vectorLayer,
             ],
             view: new View({
-                center: fromLonLat([16.626263, 49.197547]), // Souřadnice Brna
+                center: fromLonLat([16.626263, 49.197547]),
                 zoom: 12,
             }),
         });
 
-        // Uložíme vrstvy do stavu
-        setLineSource(lineVectorSource);
-        setPointSource(pointVectorSource);
-
-        // Uložíme mapu do stavu
         setMap(mapObject);
+        setLineSource(vectorSource);
 
-        return () => mapObject.setTarget(undefined);
+        return () => {
+            mapObject.setTarget(undefined);
+        };
     }, []);
 
-    //------------------------------------------------------------------------------------------------napojení na zvýrazněný bod
     useEffect(() => {
-        if (!map) return;
+        if (!map || !lineSource) return;
 
-        // Listener pro detekci najetí myši na body
-        const handlePointerMove = (event: any) => {
-            const pixel = map.getEventPixel(event);
-            const features = map.getFeaturesAtPixel(pixel);
+        const drawInteraction = new Draw({
+            source: lineSource,
+            type: "LineString",
+        });
 
-            // Najdeme bod, pokud existuje
-            const pointFeature = features?.find(
-                (feature) => feature.getGeometry() instanceof Point
-            );
+        map.addInteraction(drawInteraction);
+        drawRef.current = drawInteraction;
 
-            if (pointFeature) {
-                // Zvýrazníme bod při najetí
-                map.getTargetElement().style.cursor = "pointer";
-            } else {
-                // Vrátíme kurzor na normální, pokud nejsme nad bodem
-                map.getTargetElement().style.cursor = "";
+        // Listener na pravé kliknutí
+        const handleRightClick = (event: MouseEvent) => {
+            event.preventDefault();
+            if (drawRef.current) {
+                drawRef.current.finishDrawing(); // Ukončení kreslení
             }
         };
 
-        map.on("pointermove", handlePointerMove);
+        map.getViewport().addEventListener("contextmenu", handleRightClick);
 
-        // Vyčištění listeneru při odpojení komponenty
         return () => {
-            map.un("pointermove", handlePointerMove);
-        };
-    }, [map]);
-
-    // ----------------------------------------------------------------------------------------------Funkce pro zahájení kreslení
-    const handleMouseDown = (event: any) => {
-        if (!map || !lineSource || event.button !== 2) return;
-
-        const pixel = map.getEventPixel(event);
-        const features = map.getFeaturesAtPixel(pixel);
-
-        // Najdeme bod pod kurzorem
-        const pointFeature = features?.find(
-            (feature) => feature.getGeometry() instanceof Point
-        );
-
-        if (pointFeature) {
-            const pointCoord = (
-                pointFeature.getGeometry() as Point
-            ).getCoordinates();
-
-            // Začneme kreslit z existujícího bodu
-            const newLine = new Feature({
-                geometry: new LineString([pointCoord, pointCoord]),
-            });
-
-            lineSource.addFeature(newLine);
-            setDrawingFeature(newLine);
-        } else {
-            // Vytvoříme novou polyčáru, pokud nebyl nalezen bod
-            const coordinate = map.getCoordinateFromPixel(pixel);
-            const newLine = new Feature({
-                geometry: new LineString([coordinate, coordinate]),
-            });
-
-            lineSource.addFeature(newLine);
-            setDrawingFeature(newLine);
-
-            // Přidáme nový start bod
-            const startPoint = new Feature({
-                geometry: new Point(coordinate),
-            });
-            startPoint.setStyle(
-                new Style({
-                    image: new Circle({
-                        radius: 6,
-                        fill: new Fill({ color: "red" }),
-                        stroke: new Stroke({ color: "white", width: 2 }),
-                    }),
-                    text: new Text({
-                        text: "start",
-                        offsetY: -15,
-                        fill: new Fill({ color: "black" }),
-                        stroke: new Stroke({ color: "white", width: 2 }),
-                    }),
-                })
+            map.removeInteraction(drawInteraction);
+            map.getViewport().removeEventListener(
+                "contextmenu",
+                handleRightClick
             );
-            pointSource!.addFeature(startPoint);
-        }
-
-        event.preventDefault();
-    };
-
-    // --------------------------------------------------------------------------------------Funkce pro aktualizaci kreslené linky
-    const handleMouseMove = (event: any) => {
-        // Kontrola, zda se kreslí pravým tlačítkem
-        if (!map || !drawingFeature || event.buttons !== 2) return;
-
-        const pixel = map.getEventPixel(event);
-        const coordinate = map.getCoordinateFromPixel(pixel);
-
-        // Získání existující geometrie linie
-        const geometry = drawingFeature.getGeometry() as LineString;
-        const startCoordinate = geometry.getFirstCoordinate(); // Začátek linky
-
-        // Aktualizace linky: pouze dva body (start + aktuální pozice)
-        geometry.setCoordinates([startCoordinate, coordinate]);
-    };
-
-    // ----------------------------------------------------------------------------------------------Funkce pro ukončení kreslení
-    const handleMouseUp = (event: any) => {
-        if (!map || !drawingFeature || !pointSource || event.button !== 2)
-            return;
-
-        const pixel = map.getEventPixel(event);
-        const coordinate = map.getCoordinateFromPixel(pixel);
-
-        // Přidáme body na začátku a na konci linie
-        const geometry = drawingFeature.getGeometry() as LineString;
-        const coordinates = geometry.getCoordinates();
-
-        // Začátek linky
-        const startPoint = new Feature({
-            geometry: new Point(coordinates[0]),
-        });
-        startPoint.setStyle(
-            new Style({
-                image: new Circle({
-                    radius: 6,
-                    fill: new Fill({ color: "red" }),
-                    stroke: new Stroke({ color: "white", width: 2 }),
-                }),
-                text: new Text({
-                    text: "Start",
-                    offsetY: -15, // Posun textu nad bod
-                    fill: new Fill({ color: "black" }),
-                    stroke: new Stroke({ color: "white", width: 2 }),
-                }),
-            })
-        );
-
-        // Konec linky
-        const endPoint = new Feature({
-            geometry: new Point(coordinate),
-        });
-        endPoint.setStyle(
-            new Style({
-                image: new Circle({
-                    radius: 6,
-                    fill: new Fill({ color: "red" }),
-                    stroke: new Stroke({ color: "white", width: 2 }),
-                }),
-                text: new Text({
-                    text: "Konec",
-                    offsetY: -15, // Posun textu nad bod
-                    fill: new Fill({ color: "black" }),
-                    stroke: new Stroke({ color: "white", width: 2 }),
-                }),
-            })
-        );
-
-        pointSource.addFeatures([startPoint, endPoint]);
-
-        // Ukončíme kreslení
-        setDrawingFeature(null);
-    };
+        };
+    }, [map, lineSource]);
 
     return (
         <div>
@@ -245,9 +90,6 @@ const ImportMapComponent: React.FC = () => {
             <div
                 className="map-style"
                 ref={mapRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
                 onContextMenu={(e) => e.preventDefault()} // Zakázání kontextového menu
             ></div>
 
@@ -278,7 +120,6 @@ const ImportMapComponent: React.FC = () => {
                     className="btn btn-danger"
                     onClick={() => {
                         lineSource?.clear();
-                        pointSource?.clear();
                     }}>
                     Smazat vše
                 </button>
