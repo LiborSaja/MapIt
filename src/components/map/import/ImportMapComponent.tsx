@@ -93,8 +93,36 @@ const ImportMapComponent: React.FC = () => {
     //--------------------------------------------------------------------------------------------------------------------------
 
     useEffect(() => {
-        if (!map || !pointSource || !lineSource || currentAction !== "line")
-            return;
+        if (!map) return;
+
+        switch (currentAction) {
+            case "line":
+                activateLineDrawing();
+                break;
+            case "inspect":
+                activateInspection();
+                break;
+            case "move":
+                activateModification();
+                break;
+            case "delete":
+                activateDeletion();
+                break;
+            default:
+                deactivateAll();
+        }
+    }, [map, currentAction, lineSource, pointSource]);
+
+    // Funkce pro kreslení
+    const activateLineDrawing = () => {
+        if (!map || !pointSource || !lineSource) return;
+
+        // Odstranění starých interakcí
+        map.getInteractions().forEach((interaction) => {
+            if (interaction instanceof Draw) {
+                map.removeInteraction(interaction);
+            }
+        });
 
         const drawInteraction = new Draw({
             source: lineSource, // Přidává linie do zdroje
@@ -112,7 +140,7 @@ const ImportMapComponent: React.FC = () => {
                     geometry as LineString
                 ).getCoordinates() as [number, number][];
 
-                // Vytvoření nového objektu
+                // Přidání aktuálního data a času do názvu objektu
                 const now = new Date();
                 const formattedDateTime = `${now.getFullYear()}-${String(
                     now.getMonth() + 1
@@ -125,7 +153,7 @@ const ImportMapComponent: React.FC = () => {
                     2,
                     "0"
                 )}`;
-                const newObjectId = `Object${formattedDateTime}`;
+                const newObjectId = `Objekt_${formattedDateTime}`;
                 const points: PointData[] = [];
                 const lines: LineData[] = [];
                 const combinedItems: ItemData[] = []; // Seznam pro body a linie
@@ -138,7 +166,7 @@ const ImportMapComponent: React.FC = () => {
                         "EPSG:4326"
                     ) as [number, number];
 
-                    const pointId = `Point_${index + 1}`;
+                    const pointId = `Point_${index + 1}_${newObjectId}`;
                     const pointData: PointData = {
                         id: pointId,
                         lat: transformedCoord[1],
@@ -176,13 +204,48 @@ const ImportMapComponent: React.FC = () => {
                         data: pointData,
                     });
 
+                    // Přidání bodu do zdroje
+                    const pointFeature = new Feature({
+                        geometry: new Point(
+                            transform(
+                                [pointData.lon, pointData.lat],
+                                "EPSG:4326",
+                                "EPSG:3857"
+                            )
+                        ),
+                        data: pointData,
+                    });
+                    pointFeature.setId(pointData.id);
+
+                    pointFeature.setStyle(
+                        new Style({
+                            image: new Circle({
+                                radius: 5,
+                                fill: new Fill({
+                                    color:
+                                        index === 0
+                                            ? "green" // Start
+                                            : index === coordinates.length - 1
+                                            ? "red" // End
+                                            : "yellow", // Zlomové body
+                                }),
+                                stroke: new Stroke({
+                                    color: "white",
+                                    width: 1,
+                                }),
+                            }),
+                        })
+                    );
+
+                    pointSource.addFeature(pointFeature);
+
                     // Přidání linie (kromě prvního bodu)
                     if (index > 0) {
-                        const lineId = `Line_${index}`;
+                        const lineId = `Line_${index}_${newObjectId}`;
                         const lineData: LineData = {
                             id: lineId,
-                            start: `${newObjectId}_Point${index}`,
-                            end: `${newObjectId}_Point${index + 1}`,
+                            start: `${newObjectId}_Point_${index}`,
+                            end: `${newObjectId}_Point_${index + 1}`,
                             ...calculateLineProperties(
                                 transform(
                                     coordinates[index - 1] as [number, number],
@@ -223,43 +286,6 @@ const ImportMapComponent: React.FC = () => {
                         ),
                     },
                 ]);
-
-                // Přidání geometrie na mapu
-                points.forEach((point, index) => {
-                    const pointFeature = new Feature({
-                        geometry: new Point(
-                            transform(
-                                [point.lon, point.lat],
-                                "EPSG:4326",
-                                "EPSG:3857"
-                            )
-                        ),
-                        data: point,
-                    });
-                    pointFeature.setId(point.id);
-
-                    pointFeature.setStyle(
-                        new Style({
-                            image: new Circle({
-                                radius: 5,
-                                fill: new Fill({
-                                    color:
-                                        index === 0
-                                            ? "green" // Start
-                                            : index === points.length - 1
-                                            ? "red" // End
-                                            : "yellow", // Zlomové body
-                                }),
-                                stroke: new Stroke({
-                                    color: "white",
-                                    width: 1,
-                                }),
-                            }),
-                        })
-                    );
-
-                    pointSource.addFeature(pointFeature);
-                });
             }
         });
 
@@ -280,7 +306,82 @@ const ImportMapComponent: React.FC = () => {
                 handleRightClick
             );
         };
-    }, [map, currentAction, lineSource, pointSource]);
+    };
+
+    // Funkce pro inspekci
+    const activateInspection = () => {
+        if (!map) return;
+
+        const tooltip = document.getElementById("tooltip");
+        const tooltipOverlay = new Overlay({
+            element: tooltip!,
+            offset: [0, -15],
+            positioning: "bottom-center",
+            stopEvent: false,
+        });
+        map.addOverlay(tooltipOverlay);
+
+        const selectInteraction = new Select({
+            condition: click,
+        });
+
+        map.addInteraction(selectInteraction);
+
+        selectInteraction.on("select", (event) => {
+            const selectedFeatures = event.selected;
+
+            if (selectedFeatures.length > 0) {
+                const feature = selectedFeatures[0];
+                const geometry = feature.getGeometry();
+                const data = feature.get("data");
+
+                let tooltipText = "";
+
+                if (geometry instanceof Point) {
+                    tooltipText = `
+                        <strong>Bod:</strong><br>
+                        Lat: ${data.lat}<br>
+                        Lon: ${data.lon}<br>
+                        ${data.angle ? `Úhel: ${data.angle}°` : ""}
+                    `;
+                } else if (geometry instanceof LineString) {
+                    tooltipText = `
+                        <strong>Linie:</strong><br>
+                        Azimut: ${data.azimuth}°<br>
+                        Délka: ${data.length} km
+                    `;
+                    tooltipOverlay.setPosition(
+                        geometry.getClosestPoint(geometry.getFirstCoordinate())
+                    );
+                }
+
+                tooltip!.innerHTML = tooltipText;
+                tooltip!.classList.remove("ol-tooltip-hidden");
+            } else {
+                tooltip!.classList.add("ol-tooltip-hidden");
+            }
+        });
+
+        return () => {
+            map.removeInteraction(selectInteraction);
+            map.removeOverlay(tooltipOverlay);
+        };
+    };
+
+    // funkce pro modifikaci
+    const activateModification = () => {};
+
+    // funkce pro mazání linie
+    const activateDeletion = () => {};
+
+    // Funkce pro deaktivaci všech interakcí
+    const deactivateAll = () => {
+        if (!map) return;
+        map.getInteractions().forEach((interaction) => {
+            interaction.setActive(false);
+        });
+        map.getOverlays().clear();
+    };
 
     function calculateLineProperties(
         coord1: [number, number],
