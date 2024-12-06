@@ -16,7 +16,12 @@ import Text from "ol/style/Text";
 import { Point, LineString } from "ol/geom";
 import { Feature } from "ol";
 import { getDistance } from "ol/sphere";
-import { LineData, MapObject, PointData } from "../../../interfaces/Interface";
+import {
+    LineData,
+    MapObject,
+    PointData,
+    ItemData,
+} from "../../../interfaces/Interface";
 import { click } from "ol/events/condition";
 
 const ImportMapComponent: React.FC = () => {
@@ -111,6 +116,7 @@ const ImportMapComponent: React.FC = () => {
                 const newObjectId = `Object${Date.now()}`;
                 const points: PointData[] = [];
                 const lines: LineData[] = [];
+                const combinedItems: ItemData[] = []; // Seznam pro body a linie
 
                 // Přidání bodů a linií
                 coordinates.forEach((coord, index) => {
@@ -121,7 +127,7 @@ const ImportMapComponent: React.FC = () => {
                     ) as [number, number];
 
                     const pointId = `${newObjectId}_Point${index + 1}`;
-                    points.push({
+                    const pointData: PointData = {
                         id: pointId,
                         lat: transformedCoord[1],
                         lon: transformedCoord[0],
@@ -147,12 +153,21 @@ const ImportMapComponent: React.FC = () => {
                                       ) as [number, number]
                                   )
                                 : undefined,
+                    };
+
+                    points.push(pointData);
+
+                    // Přidání bodu do kombinovaného seznamu
+                    combinedItems.push({
+                        type: "point",
+                        order: index * 2, // Body mají sudé pořadí
+                        data: pointData,
                     });
 
                     // Přidání linie (kromě prvního bodu)
                     if (index > 0) {
                         const lineId = `${newObjectId}_Line${index}`;
-                        lines.push({
+                        const lineData: LineData = {
                             id: lineId,
                             start: `${newObjectId}_Point${index}`,
                             end: `${newObjectId}_Point${index + 1}`,
@@ -164,6 +179,15 @@ const ImportMapComponent: React.FC = () => {
                                 ) as [number, number],
                                 transformedCoord
                             ),
+                        };
+
+                        lines.push(lineData);
+
+                        // Přidání linie do kombinovaného seznamu
+                        combinedItems.push({
+                            type: "line",
+                            order: index * 2 - 1, // Linie mají liché pořadí
+                            data: lineData,
                         });
                     }
                 });
@@ -173,9 +197,20 @@ const ImportMapComponent: React.FC = () => {
                     id: newObjectId,
                     points,
                     lines,
+                    combinedItems: combinedItems.sort(
+                        (a, b) => a.order - b.order
+                    ),
                 };
 
-                setFeaturesData((prev) => [...prev, newObject]);
+                setFeaturesData((prev) => [
+                    ...prev,
+                    {
+                        ...newObject,
+                        combinedItems: combinedItems.sort(
+                            (a, b) => a.order - b.order
+                        ),
+                    },
+                ]);
 
                 // Přidání geometrie na mapu
                 points.forEach((point, index) => {
@@ -380,34 +415,60 @@ const ImportMapComponent: React.FC = () => {
                             {featuresData.map((object) => (
                                 <div key={object.id}>
                                     <h3>{object.id}</h3>
-                                    {object.points.map((point) => (
-                                        <div key={point.id}>
-                                            <p>Bod: {point.id}</p>
-                                            <p>Lat: {point.lat.toFixed(6)}</p>
-                                            <p>Lon: {point.lon.toFixed(6)}</p>
-                                            {point.angle && (
-                                                <p>
-                                                    Úhel:{" "}
-                                                    {convertAngle(point.angle)}{" "}
-                                                    {angleUnit}
-                                                </p>
+                                    {object.combinedItems.map((item, i) => (
+                                        <div key={i}>
+                                            {item.type === "point" ? (
+                                                <>
+                                                    <p>Bod: {item.data.id}</p>
+                                                    <p>
+                                                        Lat:{" "}
+                                                        {(
+                                                            item.data as PointData
+                                                        ).lat.toFixed(6)}
+                                                    </p>
+                                                    <p>
+                                                        Lon:{" "}
+                                                        {(
+                                                            item.data as PointData
+                                                        ).lon.toFixed(6)}
+                                                    </p>
+                                                    {(item.data as PointData)
+                                                        .angle !==
+                                                        undefined && (
+                                                        <p>
+                                                            Úhel:{" "}
+                                                            {convertAngle(
+                                                                (
+                                                                    item.data as PointData
+                                                                ).angle!
+                                                            )}{" "}
+                                                            {angleUnit}
+                                                        </p>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p>Linie: {item.data.id}</p>
+                                                    <p>
+                                                        Azimut:{" "}
+                                                        {convertAngle(
+                                                            (
+                                                                item.data as LineData
+                                                            ).azimuth
+                                                        )}{" "}
+                                                        {angleUnit}
+                                                    </p>
+                                                    <p>
+                                                        Délka:{" "}
+                                                        {convertDistance(
+                                                            (
+                                                                item.data as LineData
+                                                            ).length
+                                                        )}{" "}
+                                                        {distanceUnit}
+                                                    </p>
+                                                </>
                                             )}
-                                            <hr />
-                                        </div>
-                                    ))}
-                                    {object.lines.map((line) => (
-                                        <div key={line.id}>
-                                            <p>Linie: {line.id}</p>
-                                            <p>
-                                                Azimut:{" "}
-                                                {convertAngle(line.azimuth)}{" "}
-                                                {angleUnit}
-                                            </p>
-                                            <p>
-                                                Délka:{" "}
-                                                {convertDistance(line.length)}{" "}
-                                                {distanceUnit}
-                                            </p>
                                             <hr />
                                         </div>
                                     ))}

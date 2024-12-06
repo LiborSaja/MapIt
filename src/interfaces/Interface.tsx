@@ -2,6 +2,7 @@ export interface MapObject {
     id: string; // Unikátní ID polyčáry
     points: PointData[]; // Všechny body polyčáry
     lines: LineData[]; // Všechny linie polyčáry
+    combinedItems: ItemData[];
 }
 
 export interface PointData {
@@ -18,3 +19,10 @@ export interface LineData {
     azimuth: number; // Azimut
     length: number; // Délka
 }
+
+// typ pro společný seznam položek
+export type ItemData = {
+    type: "point" | "line";
+    order: number;
+    data: PointData | LineData;
+};
