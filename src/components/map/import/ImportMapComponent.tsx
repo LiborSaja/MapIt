@@ -113,7 +113,19 @@ const ImportMapComponent: React.FC = () => {
                 ).getCoordinates() as [number, number][];
 
                 // Vytvoření nového objektu
-                const newObjectId = `Object${Date.now()}`;
+                const now = new Date();
+                const formattedDateTime = `${now.getFullYear()}-${String(
+                    now.getMonth() + 1
+                ).padStart(2, "0")}-${String(now.getDate()).padStart(
+                    2,
+                    "0"
+                )}_${String(now.getHours()).padStart(2, "0")}-${String(
+                    now.getMinutes()
+                ).padStart(2, "0")}-${String(now.getSeconds()).padStart(
+                    2,
+                    "0"
+                )}`;
+                const newObjectId = `Object${formattedDateTime}`;
                 const points: PointData[] = [];
                 const lines: LineData[] = [];
                 const combinedItems: ItemData[] = []; // Seznam pro body a linie
@@ -126,7 +138,7 @@ const ImportMapComponent: React.FC = () => {
                         "EPSG:4326"
                     ) as [number, number];
 
-                    const pointId = `${newObjectId}_Point${index + 1}`;
+                    const pointId = `Point_${index + 1}`;
                     const pointData: PointData = {
                         id: pointId,
                         lat: transformedCoord[1],
@@ -166,7 +178,7 @@ const ImportMapComponent: React.FC = () => {
 
                     // Přidání linie (kromě prvního bodu)
                     if (index > 0) {
-                        const lineId = `${newObjectId}_Line${index}`;
+                        const lineId = `Line_${index}`;
                         const lineData: LineData = {
                             id: lineId,
                             start: `${newObjectId}_Point${index}`,
@@ -414,7 +426,7 @@ const ImportMapComponent: React.FC = () => {
                             <h2>Data</h2>
                             {featuresData.map((object) => (
                                 <div key={object.id}>
-                                    <h3>{object.id}</h3>
+                                    <h4>{object.id}</h4>
                                     {object.combinedItems.map((item, i) => (
                                         <div key={i}>
                                             {item.type === "point" ? (
