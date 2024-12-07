@@ -545,7 +545,127 @@ const ImportMapComponent: React.FC = () => {
     };
 
     // funkce pro modifikaci
-    const activateModification = () => {};
+    const activateModification = () => {
+        if (!map || !lineSource || !pointSource) return;
+
+        const modifyInteraction = new Modify({
+            source: pointSource,
+        });
+
+        map.addInteraction(modifyInteraction);
+
+        // Dynamická aktualizace dat při modifikaci bodu
+        modifyInteraction.on("modifyend", (event) => {
+            const modifiedFeatures = event.features.getArray();
+            modifiedFeatures.forEach((feature) => {
+                const geometry = feature.getGeometry();
+
+                if (geometry instanceof Point) {
+                    const coordinates = geometry.getCoordinates(); // Nové souřadnice
+                    const transformedCoordinates = transform(
+                        coordinates,
+                        "EPSG:3857",
+                        "EPSG:4326"
+                    ) as [number, number];
+
+                    // Získání původních dat bodu
+                    const data = feature.get("data") as PointData;
+
+                    if (!data) {
+                        console.error("Data pro bod nebyla nalezena.");
+                        return;
+                    }
+
+                    // Aktualizace dat bodu
+                    data.lat = transformedCoordinates[1];
+                    data.lon = transformedCoordinates[0];
+
+                    // Dynamická aktualizace propojených linií
+                    updateConnectedLines(data.id);
+
+                    // Aktualizace tooltipu
+                    updateTooltip(feature);
+                }
+            });
+
+            // Aktualizace zobrazených dat
+            setFeaturesData((prev) => [...prev]); // Triggers re-render
+        });
+    };
+
+    // Funkce na aktualizaci propojených linií
+    const updateConnectedLines = (pointId: string) => {
+        if (!lineSource || !pointSource) return;
+
+        // Iterace přes všechny linie
+        lineSource.getFeatures().forEach((lineFeature) => {
+            const lineData = lineFeature.get("data") as LineData;
+
+            // Zkontroluje, zda je bod připojen k linii
+            if (
+                !lineData ||
+                (lineData.start !== pointId && lineData.end !== pointId)
+            ) {
+                return;
+            }
+
+            // Získání startovního a koncového bodu
+            const startPoint = pointSource
+                ?.getFeatureById(lineData.start)
+                ?.get("data") as PointData;
+            const endPoint = pointSource
+                ?.getFeatureById(lineData.end)
+                ?.get("data") as PointData;
+
+            if (!startPoint || !endPoint) {
+                console.warn("Start nebo end point nebyl nalezen.");
+                return;
+            }
+
+            // Aktualizace délky linie
+            lineData.length = calculateLineProperties(
+                [startPoint.lon, startPoint.lat],
+                [endPoint.lon, endPoint.lat]
+            ).length;
+
+            // Aktualizace geometrie linie
+            lineFeature.setGeometry(
+                new LineString([
+                    transform(
+                        [startPoint.lon, startPoint.lat],
+                        "EPSG:4326",
+                        "EPSG:3857"
+                    ),
+                    transform(
+                        [endPoint.lon, endPoint.lat],
+                        "EPSG:4326",
+                        "EPSG:3857"
+                    ),
+                ])
+            );
+        });
+
+        console.log("Connected lines updated.");
+    };
+
+    // Funkce na aktualizaci tooltipu
+    const updateTooltip = (feature: Feature<Geometry>) => {
+        const tooltip = document.getElementById("tooltip");
+        if (!tooltip) return;
+
+        const data = feature.get("data");
+        const geometry = feature.getGeometry();
+
+        if (geometry instanceof Point) {
+            const tooltipText = generateTooltipContent(
+                data,
+                geometry,
+                distanceUnitRef.current,
+                angleUnitRef.current
+            );
+            tooltip.innerHTML = tooltipText;
+        }
+    };
 
     // funkce pro mazání linie
     const activateDeletion = () => {};
