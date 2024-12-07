@@ -612,11 +612,13 @@ const ImportMapComponent: React.FC = () => {
 
         if (geometry instanceof Point) {
             return `
-                <strong>Bod:</strong><br>
+                <strong>Bod: ${
+                    data.id
+                }</strong><br> <!-- Zobrazení názvu bodu -->
                 Lat: ${data.lat}<br>
                 Lon: ${data.lon}<br>
                 ${
-                    data.angle
+                    data.angle !== undefined
                         ? `Úhel: ${convertAngle(
                               data.angle,
                               currentAngleUnit
@@ -626,7 +628,9 @@ const ImportMapComponent: React.FC = () => {
             `;
         } else if (geometry instanceof LineString) {
             return `
-                <strong>Linie:</strong><br>
+                <strong>Linie: ${
+                    data.id
+                }</strong><br> <!-- Zobrazení názvu linie -->
                 Azimut: ${convertAngle(
                     data.azimuth,
                     currentAngleUnit
@@ -641,6 +645,25 @@ const ImportMapComponent: React.FC = () => {
         return "";
     };
 
+    function haversineDistance(
+        coord1: [number, number],
+        coord2: [number, number]
+    ): number {
+        const R = 6371e3; // Poloměr Země v metrech
+        const [lon1, lat1] = coord1.map((v) => (v * Math.PI) / 180); // Převod na radiány
+        const [lon2, lat2] = coord2.map((v) => (v * Math.PI) / 180);
+
+        const deltaLat = lat2 - lat1;
+        const deltaLon = lon2 - lon1;
+
+        const a =
+            Math.sin(deltaLat / 2) ** 2 +
+            Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Výsledná vzdálenost v metrech
+    }
+
     function calculateLineProperties(
         coord1: [number, number],
         coord2: [number, number]
@@ -654,13 +677,11 @@ const ImportMapComponent: React.FC = () => {
         let azimuth = Math.atan2(deltaLon, deltaLat) * (180 / Math.PI);
         if (azimuth < 0) azimuth += 360;
 
-        const earthRadius = 6371; // Poloměr Země v km
-        const distance =
-            Math.sqrt(deltaLat ** 2 + deltaLon ** 2) *
-            (Math.PI / 180) *
-            earthRadius;
+        const length = haversineDistance(coord1, coord2); // Přesnější výpočet
 
-        return { azimuth, length: distance };
+        console.log("Přesná délka (m):", length);
+
+        return { azimuth, length: length / 1000 }; // Převod na kilometry
     }
 
     function calculateAngle(
@@ -853,6 +874,7 @@ const ImportMapComponent: React.FC = () => {
                                     ))}
                                 </div>
                             ))}
+                            
                         </div>
                     </div>
                 </div>
