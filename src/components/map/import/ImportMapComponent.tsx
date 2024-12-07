@@ -217,6 +217,54 @@ const ImportMapComponent: React.FC = () => {
                 const lines: LineData[] = [];
                 const combinedItems: ItemData[] = []; // Seznam pro body a linie
 
+                // Startovní bod
+                const startCoord = transform(
+                    coordinates[0],
+                    "EPSG:3857",
+                    "EPSG:4326"
+                ) as [number, number];
+                const startFeature = new Feature({
+                    geometry: new Point(
+                        transform(startCoord, "EPSG:4326", "EPSG:3857")
+                    ),
+                });
+                startFeature.setStyle(
+                    new Style({
+                        text: new Text({
+                            text: "Start",
+                            font: "12px Arial",
+                            fill: new Fill({ color: "green" }),
+                            stroke: new Stroke({ color: "white", width: 2 }),
+                            offsetY: -15,
+                        }),
+                    })
+                );
+                pointSource.addFeature(startFeature);
+
+                // Koncový bod
+                const endCoord = transform(
+                    coordinates[coordinates.length - 1],
+                    "EPSG:3857",
+                    "EPSG:4326"
+                ) as [number, number];
+                const endFeature = new Feature({
+                    geometry: new Point(
+                        transform(endCoord, "EPSG:4326", "EPSG:3857")
+                    ),
+                });
+                endFeature.setStyle(
+                    new Style({
+                        text: new Text({
+                            text: "Konec",
+                            font: "12px Arial",
+                            fill: new Fill({ color: "red" }),
+                            stroke: new Stroke({ color: "white", width: 2 }),
+                            offsetY: -15,
+                        }),
+                    })
+                );
+                pointSource.addFeature(endFeature);
+
                 // Přidání bodů a linií
                 coordinates.forEach((coord, index) => {
                     const transformedCoord = transform(
