@@ -36,6 +36,16 @@ const ImportMapComponent: React.FC = () => {
     const [polylines, setPolylines] = useState<LineData[]>([]);
     const [distanceUnit, setDistanceUnit] = useState<"km" | "mil">("km");
     const [angleUnit, setAngleUnit] = useState<"°" | "rad">("°");
+    const distanceUnitRef = useRef(distanceUnit);
+    const angleUnitRef = useRef(angleUnit);
+
+    useEffect(() => {
+        distanceUnitRef.current = distanceUnit;
+    }, [distanceUnit]);
+
+    useEffect(() => {
+        angleUnitRef.current = angleUnit;
+    }, [angleUnit]);
 
     useEffect(() => {
         if (!mapRef.current) return;
@@ -105,13 +115,18 @@ const ImportMapComponent: React.FC = () => {
             const geometry = feature.getGeometry();
             const data = feature.get("data");
 
-            const tooltipText = generateTooltipContent(data, geometry);
+            const tooltipText = generateTooltipContent(
+                data,
+                geometry,
+                distanceUnit,
+                angleUnit
+            );
 
             if (tooltipText) {
                 tooltip.innerHTML = tooltipText;
             }
         }
-    }, [map, currentAction, distanceUnit, angleUnit]);
+    }, [distanceUnit, angleUnit, map, currentAction]);
 
     //--------------------------------------------------------------------------------------------------------------------------
     //------------------------------------------------------------ USEEFFECT kreslení ------------------------------------------
@@ -398,14 +413,12 @@ const ImportMapComponent: React.FC = () => {
                     });
                 } else if (geometry instanceof LineString) {
                     return [
-                        // Okraj linie (širší vrstva)
                         new Style({
                             stroke: new Stroke({
                                 color: "white",
                                 width: 8,
                             }),
                         }),
-                        // Hlavní linie (užší vrstva)
                         new Style({
                             stroke: new Stroke({
                                 color: "blue",
@@ -414,7 +427,7 @@ const ImportMapComponent: React.FC = () => {
                         }),
                     ];
                 }
-                return new Style(); // Vrátíme prázdný styl místo `null`
+                return new Style();
             },
         });
 
@@ -423,34 +436,33 @@ const ImportMapComponent: React.FC = () => {
         selectInteraction.on("select", (event) => {
             const selectedFeatures = event.selected;
 
-            if (!tooltip) {
-                console.warn("Tooltip element not found.");
-                return;
-            }
-
-            if (!tooltipOverlay) {
-                console.warn("Tooltip overlay not found.");
-                return;
-            }
+            if (!tooltip || !tooltipOverlay) return;
 
             if (selectedFeatures.length > 0) {
                 const feature = selectedFeatures[0];
                 const geometry = feature.getGeometry();
                 const data = feature.get("data");
 
-                const tooltipText = generateTooltipContent(data, geometry);
-
-                if (tooltipText) {
-                    tooltip.innerHTML = tooltipText;
-                    tooltip.classList.remove("ol-tooltip-hidden");
-
-                    tooltipOverlay.setPosition(
-                        geometry instanceof LineString
-                            ? geometry.getFirstCoordinate()
-                            : geometry instanceof Point
-                            ? geometry.getCoordinates()
-                            : undefined // Místo null vrátíme undefined
+                if (geometry) {
+                    const tooltipText = generateTooltipContent(
+                        data,
+                        geometry,
+                        distanceUnitRef.current,
+                        angleUnitRef.current
                     );
+
+                    if (tooltipText) {
+                        tooltip.innerHTML = tooltipText;
+                        tooltip.classList.remove("ol-tooltip-hidden");
+
+                        tooltipOverlay.setPosition(
+                            geometry instanceof LineString
+                                ? geometry.getFirstCoordinate()
+                                : geometry instanceof Point
+                                ? geometry.getCoordinates()
+                                : undefined
+                        );
+                    }
                 }
             } else {
                 tooltip.classList.add("ol-tooltip-hidden");
@@ -522,7 +534,9 @@ const ImportMapComponent: React.FC = () => {
     // šablona pro tooltip
     const generateTooltipContent = (
         data: any,
-        geometry: Geometry | undefined
+        geometry: Geometry | undefined,
+        distanceUnit: "km" | "mil",
+        angleUnit: "°" | "rad"
     ): string => {
         if (!data || !geometry) return "";
 
@@ -532,16 +546,25 @@ const ImportMapComponent: React.FC = () => {
                 Lat: ${data.lat}<br>
                 Lon: ${data.lon}<br>
                 ${
-                    data.angle
-                        ? `Úhel: ${convertAngle(data.angle)} ${angleUnit}`
+                    data.angle !== undefined
+                        ? `Úhel: ${convertAngle(
+                              data.angle,
+                              angleUnit
+                          )} ${angleUnit}`
                         : ""
                 }
             `;
         } else if (geometry instanceof LineString) {
             return `
                 <strong>Linie:</strong><br>
-                Azimut: ${convertAngle(data.azimuth)} ${angleUnit}<br>
-                Délka: ${convertDistance(data.length)} ${distanceUnit}
+                Azimut: ${convertAngle(
+                    data.azimuth,
+                    angleUnit
+                )} ${angleUnit}<br>
+                Délka: ${convertDistance(
+                    data.length,
+                    distanceUnit
+                )} ${distanceUnit}
             `;
         }
 
@@ -587,16 +610,14 @@ const ImportMapComponent: React.FC = () => {
         );
     }
 
-    const convertDistance = (value: number): string => {
-        return distanceUnit === "km"
-            ? value.toFixed(2) // Pokud jsou vybrány kilometry
-            : (value * 0.621371).toFixed(2); // Převod na míle
+    const convertDistance = (value: number, unit: "km" | "mil"): string => {
+        return unit === "km" ? value.toFixed(2) : (value * 0.621371).toFixed(2);
     };
 
-    const convertAngle = (value: number): string => {
-        return angleUnit === "°"
-            ? value.toFixed(2) // Pokud jsou vybrány stupně
-            : ((value * Math.PI) / 180).toFixed(2); // Převod na radiány
+    const convertAngle = (value: number, unit: "°" | "rad"): string => {
+        return unit === "°"
+            ? value.toFixed(2)
+            : ((value * Math.PI) / 180).toFixed(2);
     };
 
     return (
@@ -718,7 +739,8 @@ const ImportMapComponent: React.FC = () => {
                                                             {convertAngle(
                                                                 (
                                                                     item.data as PointData
-                                                                ).angle!
+                                                                ).angle!,
+                                                                angleUnit
                                                             )}{" "}
                                                             {angleUnit}
                                                         </p>
@@ -732,16 +754,19 @@ const ImportMapComponent: React.FC = () => {
                                                         {convertAngle(
                                                             (
                                                                 item.data as LineData
-                                                            ).azimuth
+                                                            ).azimuth,
+                                                            angleUnit // Druhý argument - jednotka
                                                         )}{" "}
                                                         {angleUnit}
                                                     </p>
+
                                                     <p>
                                                         Délka:{" "}
                                                         {convertDistance(
                                                             (
                                                                 item.data as LineData
-                                                            ).length
+                                                            ).length,
+                                                            distanceUnit
                                                         )}{" "}
                                                         {distanceUnit}
                                                     </p>
