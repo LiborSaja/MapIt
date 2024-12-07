@@ -13,7 +13,7 @@ import Stroke from "ol/style/Stroke";
 import Circle from "ol/style/Circle";
 import Fill from "ol/style/Fill";
 import Text from "ol/style/Text";
-import { Point, LineString } from "ol/geom";
+import { Point, LineString, Geometry } from "ol/geom";
 import { Feature } from "ol";
 import { getDistance } from "ol/sphere";
 import {
@@ -88,6 +88,31 @@ const ImportMapComponent: React.FC = () => {
         };
     }, []);
 
+    useEffect(() => {
+        if (!map || currentAction !== "inspect") return;
+
+        const tooltip = document.getElementById("tooltip");
+        const selectInteraction = map
+            .getInteractions()
+            .getArray()
+            .find((interaction) => interaction instanceof Select) as Select;
+
+        if (!selectInteraction || !tooltip) return;
+
+        const selectedFeatures = selectInteraction.getFeatures().getArray();
+        if (selectedFeatures.length > 0) {
+            const feature = selectedFeatures[0];
+            const geometry = feature.getGeometry();
+            const data = feature.get("data");
+
+            const tooltipText = generateTooltipContent(data, geometry);
+
+            if (tooltipText) {
+                tooltip.innerHTML = tooltipText;
+            }
+        }
+    }, [map, currentAction, distanceUnit, angleUnit]);
+
     //--------------------------------------------------------------------------------------------------------------------------
     //------------------------------------------------------------ USEEFFECT kreslení ------------------------------------------
     //--------------------------------------------------------------------------------------------------------------------------
@@ -97,15 +122,23 @@ const ImportMapComponent: React.FC = () => {
 
         switch (currentAction) {
             case "line":
+                resetSelection();
+                deactivateAll();
                 activateLineDrawing();
                 break;
             case "inspect":
+                resetSelection();
+                deactivateAll();
                 activateInspection();
                 break;
             case "move":
+                resetSelection();
+                deactivateAll();
                 activateModification();
                 break;
             case "delete":
+                resetSelection();
+                deactivateAll();
                 activateDeletion();
                 break;
             default:
@@ -242,21 +275,49 @@ const ImportMapComponent: React.FC = () => {
                     // Přidání linie (kromě prvního bodu)
                     if (index > 0) {
                         const lineId = `Line_${index}_${newObjectId}`;
+                        const startPoint = points[index - 1]; // Předchozí bod
+                        const endPoint = points[index]; // Aktuální bod
+
                         const lineData: LineData = {
                             id: lineId,
-                            start: `${newObjectId}_Point_${index}`,
-                            end: `${newObjectId}_Point_${index + 1}`,
+                            start: startPoint.id,
+                            end: endPoint.id,
                             ...calculateLineProperties(
-                                transform(
-                                    coordinates[index - 1] as [number, number],
-                                    "EPSG:3857",
-                                    "EPSG:4326"
-                                ) as [number, number],
-                                transformedCoord
+                                [startPoint.lon, startPoint.lat],
+                                [endPoint.lon, endPoint.lat]
                             ),
                         };
 
                         lines.push(lineData);
+
+                        // Vytvoření geometrie pro linii
+                        const lineFeature = new Feature({
+                            geometry: new LineString([
+                                transform(
+                                    [startPoint.lon, startPoint.lat],
+                                    "EPSG:4326",
+                                    "EPSG:3857"
+                                ),
+                                transform(
+                                    [endPoint.lon, endPoint.lat],
+                                    "EPSG:4326",
+                                    "EPSG:3857"
+                                ),
+                            ]),
+                            data: lineData, // Přidání dat k linii
+                        });
+                        lineFeature.setId(lineData.id);
+
+                        lineFeature.setStyle(
+                            new Style({
+                                stroke: new Stroke({
+                                    color: "blue",
+                                    width: 3,
+                                }),
+                            })
+                        );
+
+                        lineSource.addFeature(lineFeature);
 
                         // Přidání linie do kombinovaného seznamu
                         combinedItems.push({
@@ -308,21 +369,53 @@ const ImportMapComponent: React.FC = () => {
         };
     };
 
-    // Funkce pro inspekci
+    // ------------------------------------------------------------------------------------------------------- režim inspekce
     const activateInspection = () => {
         if (!map) return;
+
+        initializeTooltip();
 
         const tooltip = document.getElementById("tooltip");
         const tooltipOverlay = new Overlay({
             element: tooltip!,
             offset: [0, -15],
-            positioning: "bottom-center",
+            positioning: "center-center",
             stopEvent: false,
         });
         map.addOverlay(tooltipOverlay);
 
         const selectInteraction = new Select({
             condition: click,
+            style: (feature) => {
+                const geometry = feature.getGeometry();
+                if (geometry instanceof Point) {
+                    return new Style({
+                        image: new Circle({
+                            radius: 6,
+                            fill: new Fill({ color: "blue" }),
+                            stroke: new Stroke({ color: "white", width: 2 }),
+                        }),
+                    });
+                } else if (geometry instanceof LineString) {
+                    return [
+                        // Okraj linie (širší vrstva)
+                        new Style({
+                            stroke: new Stroke({
+                                color: "white",
+                                width: 8,
+                            }),
+                        }),
+                        // Hlavní linie (užší vrstva)
+                        new Style({
+                            stroke: new Stroke({
+                                color: "blue",
+                                width: 4,
+                            }),
+                        }),
+                    ];
+                }
+                return new Style(); // Vrátíme prázdný styl místo `null`
+            },
         });
 
         map.addInteraction(selectInteraction);
@@ -330,35 +423,37 @@ const ImportMapComponent: React.FC = () => {
         selectInteraction.on("select", (event) => {
             const selectedFeatures = event.selected;
 
+            if (!tooltip) {
+                console.warn("Tooltip element not found.");
+                return;
+            }
+
+            if (!tooltipOverlay) {
+                console.warn("Tooltip overlay not found.");
+                return;
+            }
+
             if (selectedFeatures.length > 0) {
                 const feature = selectedFeatures[0];
                 const geometry = feature.getGeometry();
                 const data = feature.get("data");
 
-                let tooltipText = "";
+                const tooltipText = generateTooltipContent(data, geometry);
 
-                if (geometry instanceof Point) {
-                    tooltipText = `
-                        <strong>Bod:</strong><br>
-                        Lat: ${data.lat}<br>
-                        Lon: ${data.lon}<br>
-                        ${data.angle ? `Úhel: ${data.angle}°` : ""}
-                    `;
-                } else if (geometry instanceof LineString) {
-                    tooltipText = `
-                        <strong>Linie:</strong><br>
-                        Azimut: ${data.azimuth}°<br>
-                        Délka: ${data.length} km
-                    `;
+                if (tooltipText) {
+                    tooltip.innerHTML = tooltipText;
+                    tooltip.classList.remove("ol-tooltip-hidden");
+
                     tooltipOverlay.setPosition(
-                        geometry.getClosestPoint(geometry.getFirstCoordinate())
+                        geometry instanceof LineString
+                            ? geometry.getFirstCoordinate()
+                            : geometry instanceof Point
+                            ? geometry.getCoordinates()
+                            : undefined // Místo null vrátíme undefined
                     );
                 }
-
-                tooltip!.innerHTML = tooltipText;
-                tooltip!.classList.remove("ol-tooltip-hidden");
             } else {
-                tooltip!.classList.add("ol-tooltip-hidden");
+                tooltip.classList.add("ol-tooltip-hidden");
             }
         });
 
@@ -377,10 +472,80 @@ const ImportMapComponent: React.FC = () => {
     // Funkce pro deaktivaci všech interakcí
     const deactivateAll = () => {
         if (!map) return;
+
+        // Prochází všechny interakce a deaktivuje jen ty, které nejsou DragPan a MouseWheelZoom
         map.getInteractions().forEach((interaction) => {
-            interaction.setActive(false);
+            if (
+                !(
+                    interaction instanceof DragPan ||
+                    interaction instanceof MouseWheelZoom
+                )
+            ) {
+                interaction.setActive(false);
+            }
         });
+
+        // Odstranění všech overlayů (např. tooltipy)
         map.getOverlays().clear();
+
+        // Odstranění specifických interakcí, pokud existují
+        if (drawRef.current) {
+            map.removeInteraction(drawRef.current);
+            drawRef.current = null;
+        }
+    };
+
+    //---------------------------------------------------------------------------------------------------------- pomocné funkce
+    // inicializace tooltipu
+    const initializeTooltip = () => {
+        let tooltip = document.getElementById("tooltip");
+        if (!tooltip) {
+            tooltip = document.createElement("div");
+            tooltip.id = "tooltip";
+            tooltip.className = "ol-tooltip ol-tooltip-hidden";
+            document.body.appendChild(tooltip);
+        }
+    };
+
+    // reset zvýraznění vybraných bodů a liní
+    const resetSelection = () => {
+        if (!map) return;
+
+        map.getInteractions().forEach((interaction) => {
+            if (interaction instanceof Select) {
+                const selectedFeatures = interaction.getFeatures();
+                selectedFeatures.clear(); // Vymaže aktuální výběr
+            }
+        });
+    };
+
+    // šablona pro tooltip
+    const generateTooltipContent = (
+        data: any,
+        geometry: Geometry | undefined
+    ): string => {
+        if (!data || !geometry) return "";
+
+        if (geometry instanceof Point) {
+            return `
+                <strong>Bod:</strong><br>
+                Lat: ${data.lat}<br>
+                Lon: ${data.lon}<br>
+                ${
+                    data.angle
+                        ? `Úhel: ${convertAngle(data.angle)} ${angleUnit}`
+                        : ""
+                }
+            `;
+        } else if (geometry instanceof LineString) {
+            return `
+                <strong>Linie:</strong><br>
+                Azimut: ${convertAngle(data.azimuth)} ${angleUnit}<br>
+                Délka: ${convertDistance(data.length)} ${distanceUnit}
+            `;
+        }
+
+        return "";
     };
 
     function calculateLineProperties(
