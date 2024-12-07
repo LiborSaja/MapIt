@@ -100,6 +100,16 @@ const ImportMapComponent: React.FC = () => {
 
     useEffect(() => {
         if (!map || currentAction !== "inspect") return;
+        deactivateAll(); // Odstraňte staré interakce
+        activateInspection();
+
+        // Resetuje zvýraznění všech vybraných prvků
+        map.getInteractions().forEach((interaction) => {
+            if (interaction instanceof Select) {
+                const selectedFeatures = interaction.getFeatures();
+                selectedFeatures.clear();
+            }
+        });
 
         const tooltip = document.getElementById("tooltip");
         const selectInteraction = map
@@ -115,18 +125,19 @@ const ImportMapComponent: React.FC = () => {
             const geometry = feature.getGeometry();
             const data = feature.get("data");
 
+            // Zajistí aktualizaci tooltipu při změně jednotek
             const tooltipText = generateTooltipContent(
                 data,
                 geometry,
-                distanceUnit,
-                angleUnit
+                distanceUnitRef.current,
+                angleUnitRef.current
             );
 
             if (tooltipText) {
                 tooltip.innerHTML = tooltipText;
             }
         }
-    }, [distanceUnit, angleUnit, map, currentAction]);
+    }, [map, currentAction, distanceUnit, angleUnit]);
 
     //--------------------------------------------------------------------------------------------------------------------------
     //------------------------------------------------------------ USEEFFECT kreslení ------------------------------------------
@@ -388,11 +399,15 @@ const ImportMapComponent: React.FC = () => {
     const activateInspection = () => {
         if (!map) return;
 
-        initializeTooltip();
+        const tooltip = initializeTooltip();
 
-        const tooltip = document.getElementById("tooltip");
+        if (!tooltip) {
+            console.warn("Tooltip element could not be initialized.");
+            return;
+        }
+
         const tooltipOverlay = new Overlay({
-            element: tooltip!,
+            element: tooltip,
             offset: [0, -15],
             positioning: "center-center",
             stopEvent: false,
@@ -436,33 +451,39 @@ const ImportMapComponent: React.FC = () => {
         selectInteraction.on("select", (event) => {
             const selectedFeatures = event.selected;
 
-            if (!tooltip || !tooltipOverlay) return;
+            if (!tooltip) {
+                console.warn("Tooltip element not found.");
+                return;
+            }
+
+            if (!tooltipOverlay) {
+                console.warn("Tooltip overlay not found.");
+                return;
+            }
 
             if (selectedFeatures.length > 0) {
                 const feature = selectedFeatures[0];
                 const geometry = feature.getGeometry();
                 const data = feature.get("data");
 
-                if (geometry) {
-                    const tooltipText = generateTooltipContent(
-                        data,
-                        geometry,
-                        distanceUnitRef.current,
-                        angleUnitRef.current
+                const tooltipText = generateTooltipContent(
+                    data,
+                    geometry,
+                    distanceUnit,
+                    angleUnit
+                );
+
+                if (tooltipText) {
+                    tooltip.innerHTML = tooltipText;
+                    tooltip.classList.remove("ol-tooltip-hidden");
+
+                    tooltipOverlay.setPosition(
+                        geometry instanceof LineString
+                            ? geometry.getFirstCoordinate()
+                            : geometry instanceof Point
+                            ? geometry.getCoordinates()
+                            : undefined
                     );
-
-                    if (tooltipText) {
-                        tooltip.innerHTML = tooltipText;
-                        tooltip.classList.remove("ol-tooltip-hidden");
-
-                        tooltipOverlay.setPosition(
-                            geometry instanceof LineString
-                                ? geometry.getFirstCoordinate()
-                                : geometry instanceof Point
-                                ? geometry.getCoordinates()
-                                : undefined
-                        );
-                    }
                 }
             } else {
                 tooltip.classList.add("ol-tooltip-hidden");
@@ -509,7 +530,7 @@ const ImportMapComponent: React.FC = () => {
 
     //---------------------------------------------------------------------------------------------------------- pomocné funkce
     // inicializace tooltipu
-    const initializeTooltip = () => {
+    const initializeTooltip = (): HTMLElement | null => {
         let tooltip = document.getElementById("tooltip");
         if (!tooltip) {
             tooltip = document.createElement("div");
@@ -517,6 +538,7 @@ const ImportMapComponent: React.FC = () => {
             tooltip.className = "ol-tooltip ol-tooltip-hidden";
             document.body.appendChild(tooltip);
         }
+        return tooltip;
     };
 
     // reset zvýraznění vybraných bodů a liní
@@ -535,8 +557,8 @@ const ImportMapComponent: React.FC = () => {
     const generateTooltipContent = (
         data: any,
         geometry: Geometry | undefined,
-        distanceUnit: "km" | "mil",
-        angleUnit: "°" | "rad"
+        currentDistanceUnit: "km" | "mil",
+        currentAngleUnit: "°" | "rad"
     ): string => {
         if (!data || !geometry) return "";
 
@@ -546,11 +568,11 @@ const ImportMapComponent: React.FC = () => {
                 Lat: ${data.lat}<br>
                 Lon: ${data.lon}<br>
                 ${
-                    data.angle !== undefined
+                    data.angle
                         ? `Úhel: ${convertAngle(
                               data.angle,
-                              angleUnit
-                          )} ${angleUnit}`
+                              currentAngleUnit
+                          )} ${currentAngleUnit}`
                         : ""
                 }
             `;
@@ -559,12 +581,12 @@ const ImportMapComponent: React.FC = () => {
                 <strong>Linie:</strong><br>
                 Azimut: ${convertAngle(
                     data.azimuth,
-                    angleUnit
-                )} ${angleUnit}<br>
+                    currentAngleUnit
+                )} ${currentAngleUnit}<br>
                 Délka: ${convertDistance(
                     data.length,
-                    distanceUnit
-                )} ${distanceUnit}
+                    currentDistanceUnit
+                )} ${currentDistanceUnit}
             `;
         }
 
@@ -659,6 +681,12 @@ const ImportMapComponent: React.FC = () => {
                                 lineSource?.clear();
                                 pointSource?.clear();
                                 setFeaturesData([]);
+                                // Skrytí tooltipu
+                                const tooltip =
+                                    document.getElementById("tooltip");
+                                if (tooltip) {
+                                    tooltip.classList.add("ol-tooltip-hidden");
+                                }
                             }}>
                             Smazat vše
                         </button>
