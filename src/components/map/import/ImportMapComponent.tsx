@@ -612,9 +612,7 @@ const ImportMapComponent: React.FC = () => {
 
         if (geometry instanceof Point) {
             return `
-                <strong>Bod: ${
-                    data.id
-                }</strong><br> <!-- Zobrazení názvu bodu -->
+                <strong>${data.id}</strong><br> 
                 Lat: ${data.lat}<br>
                 Lon: ${data.lon}<br>
                 ${
@@ -628,9 +626,7 @@ const ImportMapComponent: React.FC = () => {
             `;
         } else if (geometry instanceof LineString) {
             return `
-                <strong>Linie: ${
-                    data.id
-                }</strong><br> <!-- Zobrazení názvu linie -->
+                <strong> ${data.id}</strong><br> 
                 Azimut: ${convertAngle(
                     data.azimuth,
                     currentAngleUnit
@@ -808,10 +804,10 @@ const ImportMapComponent: React.FC = () => {
                     <div className="row scrollable-section">
                         <div className="col">
                             <h2>Data</h2>
-                            {featuresData.map((object) => (
-                                <div key={object.id}>
-                                    <h4>{object.id}</h4>
-                                    {object.combinedItems.map((item, i) => (
+                            {featuresData.map((mapObject) => (
+                                <div key={mapObject.id}>
+                                    <h4>{mapObject.id}</h4>
+                                    {mapObject.combinedItems.map((item, i) => (
                                         <div key={i}>
                                             {item.type === "point" ? (
                                                 <>
@@ -852,11 +848,10 @@ const ImportMapComponent: React.FC = () => {
                                                             (
                                                                 item.data as LineData
                                                             ).azimuth,
-                                                            angleUnit // Druhý argument - jednotka
+                                                            angleUnit
                                                         )}{" "}
                                                         {angleUnit}
                                                     </p>
-
                                                     <p>
                                                         Délka:{" "}
                                                         {convertDistance(
@@ -872,9 +867,22 @@ const ImportMapComponent: React.FC = () => {
                                             <hr />
                                         </div>
                                     ))}
+                                    {/* Přidání celkové délky */}
+                                    <h5>
+                                        Celková délka:{" "}
+                                        {convertDistance(
+                                            mapObject.lines.reduce(
+                                                (sum: number, line: LineData) =>
+                                                    sum + line.length,
+                                                0
+                                            ),
+                                            distanceUnit
+                                        )}{" "}
+                                        {distanceUnit}
+                                    </h5>
+                                    <hr />
                                 </div>
                             ))}
-                            
                         </div>
                     </div>
                 </div>
