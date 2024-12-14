@@ -1,28 +1,13 @@
-export interface MapObject {
-    id: string; // Unikátní ID polyčáry
-    points: PointData[]; // Všechny body polyčáry
-    lines: LineData[]; // Všechny linie polyčáry
-    combinedItems: ItemData[];
-}
+export type SegmentData = {
+    segment: number;
+    length: number;
+    azimuth: number;
+    angleToNext?: number;
+    startLatLon: [number, number]; // Souřadnice začátku segmentu
+    endLatLon: [number, number]; // Souřadnice konce segmentu
+};
 
-export interface PointData {
-    id: string; // Unikátní ID bodu
-    lat: number; // Zeměpisná šířka
-    lon: number; // Zeměpisná délka
-    angle?: number; // Úhel (volitelné)
-}
-
-export interface LineData {
-    id: string; // Unikátní ID linie
-    start: string; // ID startovního bodu
-    end: string; // ID koncového bodu
-    azimuth: number; // Azimut
-    length: number; // Délka
-}
-
-// typ pro společný seznam položek
-export type ItemData = {
-    type: "point" | "line";
-    order: number;
-    data: PointData | LineData;
+export type LineData = {
+    id: string; // Unikátní ID pro každou polyčáru
+    segments: SegmentData[]; // Pole dat segmentů pro tuto polyčáru
 };

@@ -1,1008 +1,729 @@
 import React, { useEffect, useRef, useState } from "react";
 import "ol/ol.css";
-import { Map, Overlay, View } from "ol";
+import { Feature, Map, Overlay, View } from "ol";
 import TileLayer from "ol/layer/Tile";
-import OSM from "ol/source/OSM";
 import VectorLayer from "ol/layer/Vector";
+import OSM from "ol/source/OSM";
 import VectorSource from "ol/source/Vector";
-import { fromLonLat, transform } from "ol/proj";
-import { DragPan, Draw, Modify, MouseWheelZoom, Select } from "ol/interaction";
+import { Draw, Modify } from "ol/interaction";
+import { Geometry, LineString, Point } from "ol/geom";
+import { Coordinate } from "ol/coordinate";
+import { fromLonLat } from "ol/proj";
 import "./ImportMapComponent.css";
+import { altKeyOnly } from "ol/events/condition";
 import Style from "ol/style/Style";
 import Stroke from "ol/style/Stroke";
-import Circle from "ol/style/Circle";
 import Fill from "ol/style/Fill";
 import Text from "ol/style/Text";
-import { Point, LineString, Geometry } from "ol/geom";
-import { Feature } from "ol";
-import { getDistance } from "ol/sphere";
+import RegularShape from "ol/style/RegularShape";
+import { defaults as defaultControls } from "ol/control";
+import { defaults as defaultInteractions } from "ol/interaction";
+import Extent from "ol/interaction/Extent";
+import { platformModifierKeyOnly } from "ol/events/condition";
+import { SegmentData, LineData } from "../../../interfaces/Interface";
 import {
-    LineData,
-    MapObject,
-    PointData,
-    ItemData,
-} from "../../../interfaces/Interface";
-import { click } from "ol/events/condition";
+    calculateAllProperties,
+    convertDistance,
+    convertAngle,
+    transformCoordinate,
+    calculateTotalLength,
+} from "../../../services/CalculationsService";
 
 const ImportMapComponent: React.FC = () => {
-    const mapRef = useRef<HTMLDivElement | null>(null);
-    const [map, setMap] = useState<Map | null>(null);
-    const [lineSource, setLineSource] = useState<VectorSource | null>(null);
-    const [pointSource, setPointSource] = useState<VectorSource | null>(null);
-    const drawRef = useRef<Draw | null>(null);
-    const [currentAction, setCurrentAction] = useState<string>("line");
-    const [featuresData, setFeaturesData] = useState<MapObject[]>([]);
-
-    const [polylines, setPolylines] = useState<LineData[]>([]);
+    const mapContainerRef = useRef<HTMLDivElement | null>(null);
+    const [segmentData, setSegmentData] = useState<LineData[]>([]);
     const [distanceUnit, setDistanceUnit] = useState<"km" | "mil">("km");
     const [angleUnit, setAngleUnit] = useState<"°" | "rad">("°");
-    const distanceUnitRef = useRef(distanceUnit);
-    const angleUnitRef = useRef(angleUnit);
+    const vectorSourceRef = useRef<VectorSource | null>(null);
+    const popupRef = useRef<HTMLDivElement | null>(null);
+    const [popupContent] = useState<string>("");
+    const [showInfoLabels, setShowInfoLabels] = useState(true);
+    let polylineCounter = 0;
+
+    const clearAllFeatures = () => {
+        if (vectorSourceRef.current) {
+            vectorSourceRef.current.clear(); // Odstraní všechny prvky z mapy
+        }
+        setSegmentData([]);
+    };
 
     useEffect(() => {
-        distanceUnitRef.current = distanceUnit;
-    }, [distanceUnit]);
+        if (!mapContainerRef.current) return;
 
-    useEffect(() => {
-        angleUnitRef.current = angleUnit;
-    }, [angleUnit]);
-
-    useEffect(() => {
-        if (!mapRef.current) return;
-
+        // Vektorový zdroj
         const vectorSource = new VectorSource();
-        const pointVectorSource = new VectorSource();
+        vectorSourceRef.current = vectorSource;
 
-        const vectorLayer = new VectorLayer({
-            source: vectorSource,
-            style: new Style({
-                stroke: new Stroke({
-                    color: "blue",
-                    width: 3,
-                }),
-            }),
+        const popup = new Overlay({
+            element: popupRef.current!,
+            positioning: "bottom-center",
+            stopEvent: false,
         });
 
-        const pointLayer = new VectorLayer({
-            source: pointVectorSource,
-            style: new Style({
-                image: new Circle({
-                    radius: 5,
-                    fill: new Fill({ color: "yellow" }),
-                    stroke: new Stroke({ color: "white", width: 1 }),
-                }),
-            }),
-        });
-
-        const mapObject = new Map({
-            target: mapRef.current,
+        // Inicializace mapy
+        const map = new Map({
+            target: mapContainerRef.current,
             layers: [
                 new TileLayer({
                     source: new OSM(),
                 }),
-                vectorLayer,
-                pointLayer,
+                new VectorLayer({
+                    source: vectorSource,
+                    style: new Style({
+                        stroke: new Stroke({
+                            color: "blue", // Barva polyčáry
+                            width: 4, // Tloušťka polyčáry
+                        }),
+                    }), // Nastavení stylu pro polyčáry
+                }),
             ],
             view: new View({
                 center: fromLonLat([16.626263, 49.197547]),
                 zoom: 12,
             }),
+            overlays: [popup],
+            controls: defaultControls().extend([]),
+            interactions: defaultInteractions({ onFocusOnly: false }),
         });
 
-        setMap(mapObject);
-        setLineSource(vectorSource);
-        setPointSource(pointVectorSource);
-
-        return () => {
-            mapObject.setTarget(undefined);
+        // vlastní podmínka pro Ctrl + Levé tlačítko myši
+        const ctrlAndLeftMouseCondition = (event: any) => {
+            const originalEvent = event.originalEvent;
+            return originalEvent.ctrlKey && originalEvent.button === 0;
         };
-    }, []);
 
-    useEffect(() => {
-        if (!map || currentAction !== "inspect") return;
-        deactivateAll(); // Odstraňte staré interakce
-        activateInspection();
-
-        // Resetuje zvýraznění všech vybraných prvků
-        map.getInteractions().forEach((interaction) => {
-            if (interaction instanceof Select) {
-                const selectedFeatures = interaction.getFeatures();
-                selectedFeatures.clear();
-            }
-        });
-
-        const tooltip = document.getElementById("tooltip");
-        const selectInteraction = map
-            .getInteractions()
-            .getArray()
-            .find((interaction) => interaction instanceof Select) as Select;
-
-        if (!selectInteraction || !tooltip) return;
-
-        const selectedFeatures = selectInteraction.getFeatures().getArray();
-        if (selectedFeatures.length > 0) {
-            const feature = selectedFeatures[0];
-            const geometry = feature.getGeometry();
-            const data = feature.get("data");
-
-            // Zajistí aktualizaci tooltipu při změně jednotek
-            const tooltipText = generateTooltipContent(
-                data,
-                geometry,
-                distanceUnitRef.current,
-                angleUnitRef.current
-            );
-
-            if (tooltipText) {
-                tooltip.innerHTML = tooltipText;
-            }
-        }
-    }, [map, currentAction, distanceUnit, angleUnit]);
-
-    //--------------------------------------------------------------------------------------------------------------------------
-    //------------------------------------------------------------ USEEFFECT kreslení ------------------------------------------
-    //--------------------------------------------------------------------------------------------------------------------------
-
-    useEffect(() => {
-        if (!map) return;
-
-        switch (currentAction) {
-            case "line":
-                resetSelection();
-                deactivateAll();
-                activateLineDrawing();
-                break;
-            case "inspect":
-                resetSelection();
-                deactivateAll();
-                activateInspection();
-                break;
-            case "move":
-                resetSelection();
-                deactivateAll();
-                activateModification();
-                break;
-            case "delete":
-                resetSelection();
-                deactivateAll();
-                activateDeletion();
-                break;
-            default:
-                deactivateAll();
-        }
-    }, [map, currentAction, lineSource, pointSource]);
-
-    // Funkce pro kreslení
-    const activateLineDrawing = () => {
-        if (!map || !pointSource || !lineSource) return;
-
-        // Odstranění starých interakcí
-        map.getInteractions().forEach((interaction) => {
-            if (interaction instanceof Draw) {
-                map.removeInteraction(interaction);
-            }
-        });
-
+        // Vytvoření interakce pro kreslení
         const drawInteraction = new Draw({
-            source: lineSource, // Přidává linie do zdroje
-            type: "LineString", // Kreslí linie
+            source: vectorSource,
+            type: "LineString",
+            condition: ctrlAndLeftMouseCondition,
+            style: new Style({
+                // Prázdný styl, aby se modré kolečko nezobrazovalo
+                stroke: new Stroke({
+                    color: "blue", // Barva čáry při kreslení
+                    width: 4, // Tloušťka čáry při kreslení
+                }),
+            }),
         });
 
-        map.addInteraction(drawInteraction);
-        drawRef.current = drawInteraction;
+        // Interakce pro modifikaci
+        const modifyInteraction = new Modify({
+            source: vectorSource,
+            condition: altKeyOnly,
+        });
 
-        drawInteraction.on("drawend", (event) => {
-            const geometry = event.feature.getGeometry();
+        const extentInteraction = new Extent({
+            condition: platformModifierKeyOnly, // Aktivace pouze při platformní klávese (např. Ctrl nebo Alt)
+            pointerStyle: [], // Odstraní modré kolečko
+        });
+        extentInteraction.setActive(false);
+        map.addInteraction(extentInteraction);
 
-            if (geometry?.getType() === "LineString") {
-                const coordinates = (
-                    geometry as LineString
-                ).getCoordinates() as [number, number][];
+        // Povolení a zakázání interakce
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "ctrl") {
+                extentInteraction.setActive(true); // Aktivuje interakci při stisku Shift
+            }
+        });
 
-                // Přidání aktuálního data a času do názvu objektu
-                const now = new Date();
-                const formattedDateTime = `${now.getFullYear()}-${String(
-                    now.getMonth() + 1
-                ).padStart(2, "0")}-${String(now.getDate()).padStart(
-                    2,
-                    "0"
-                )}_${String(now.getHours()).padStart(2, "0")}-${String(
-                    now.getMinutes()
-                ).padStart(2, "0")}-${String(now.getSeconds()).padStart(
-                    2,
-                    "0"
-                )}`;
-                const newObjectId = `Objekt_${formattedDateTime}`;
-                const points: PointData[] = [];
-                const lines: LineData[] = [];
-                const combinedItems: ItemData[] = []; // Seznam pro body a linie
+        document.addEventListener("keyup", (event) => {
+            if (event.key === "ctrl") {
+                extentInteraction.setActive(false); // Deaktivuje interakci při uvolnění Shift
+            }
+        });
 
-                // Startovní bod
-                const startCoord = transform(
-                    coordinates[0],
-                    "EPSG:3857",
-                    "EPSG:4326"
-                ) as [number, number];
+        const createStartEndLabels = (
+            lineString: LineString,
+            polylineId: string
+        ) => {
+            const features: Feature<Point>[] = [];
+
+            // Zkontroluj, zda má polyčára alespoň dva body
+            const coordinates = lineString.getCoordinates();
+            if (coordinates.length < 2) {
+                return features; // Nepřidávej žádné štítky
+            }
+
+            // Začátek polylinie
+            if (lineString.getFirstCoordinate()) {
                 const startFeature = new Feature({
-                    geometry: new Point(
-                        transform(startCoord, "EPSG:4326", "EPSG:3857")
-                    ),
+                    geometry: new Point(lineString.getFirstCoordinate()),
                 });
                 startFeature.setStyle(
                     new Style({
                         text: new Text({
                             text: "Start",
-                            font: "12px Arial",
-                            fill: new Fill({ color: "green" }),
-                            stroke: new Stroke({ color: "white", width: 2 }),
-                            offsetY: -15,
+                            font: "12px Calibri,sans-serif",
+                            fill: new Fill({ color: "white" }),
+                            backgroundFill: new Fill({ color: "green" }),
+                            padding: [3, 3, 3, 3],
+                            offsetY: -10,
                         }),
                     })
                 );
-                pointSource.addFeature(startFeature);
+                startFeature.set("isLabel", true); // Označení jako štítek
+                startFeature.set("polylineId", polylineId); // Přidání ID polyčáry
+                features.push(startFeature);
+            }
 
-                // Koncový bod
-                const endCoord = transform(
-                    coordinates[coordinates.length - 1],
-                    "EPSG:3857",
-                    "EPSG:4326"
-                ) as [number, number];
+            // Konec polylinie
+            if (lineString.getLastCoordinate()) {
                 const endFeature = new Feature({
-                    geometry: new Point(
-                        transform(endCoord, "EPSG:4326", "EPSG:3857")
-                    ),
+                    geometry: new Point(lineString.getLastCoordinate()),
                 });
                 endFeature.setStyle(
                     new Style({
                         text: new Text({
                             text: "Konec",
-                            font: "12px Arial",
-                            fill: new Fill({ color: "red" }),
-                            stroke: new Stroke({ color: "white", width: 2 }),
-                            offsetY: -15,
+                            font: "12px Calibri,sans-serif",
+                            fill: new Fill({ color: "white" }),
+                            backgroundFill: new Fill({ color: "red" }),
+                            padding: [3, 3, 3, 3],
+                            offsetY: -10,
                         }),
                     })
                 );
-                pointSource.addFeature(endFeature);
+                endFeature.set("isLabel", true); // Označení jako štítek
+                endFeature.set("polylineId", polylineId); // Přidání ID polyčáry
+                features.push(endFeature);
+            }
 
-                // Přidání bodů a linií
-                coordinates.forEach((coord, index) => {
-                    const transformedCoord = transform(
-                        coord as [number, number],
-                        "EPSG:3857",
-                        "EPSG:4326"
-                    ) as [number, number];
+            return features;
+        };
 
-                    const pointId = `Point_${index + 1}_${newObjectId}`;
-                    const pointData: PointData = {
-                        id: pointId,
-                        lat: transformedCoord[1],
-                        lon: transformedCoord[0],
-                        angle:
-                            index > 0 && index < coordinates.length - 1
-                                ? calculateAngle(
-                                      transform(
-                                          coordinates[index - 1] as [
-                                              number,
-                                              number
-                                          ],
-                                          "EPSG:3857",
-                                          "EPSG:4326"
-                                      ) as [number, number],
-                                      transformedCoord,
-                                      transform(
-                                          coordinates[index + 1] as [
-                                              number,
-                                              number
-                                          ],
-                                          "EPSG:3857",
-                                          "EPSG:4326"
-                                      ) as [number, number]
-                                  )
-                                : undefined,
-                    };
+        // Funkce pro vytvoření štítků
+        const createSegmentLabels = (
+            lineString: LineString,
+            polylineName: string,
+            polylineId: string
+        ) => {
+            const labelFeatures: Feature<Point>[] = [];
+            let segmentNumber = 1;
 
-                    points.push(pointData);
+            lineString.forEachSegment((start, end) => {
+                const segment = new LineString([start, end]);
+                const midPoint = segment.getCoordinateAt(0.5);
 
-                    // Přidání bodu do kombinovaného seznamu
-                    combinedItems.push({
-                        type: "point",
-                        order: index * 2, // Body mají sudé pořadí
-                        data: pointData,
-                    });
+                const labelFeature = new Feature({
+                    geometry: new Point(midPoint),
+                });
 
-                    // Přidání bodu do zdroje
-                    const pointFeature = new Feature({
-                        geometry: new Point(
-                            transform(
-                                [pointData.lon, pointData.lat],
-                                "EPSG:4326",
-                                "EPSG:3857"
-                            )
-                        ),
-                        data: pointData,
-                    });
-                    pointFeature.setId(pointData.id);
-
-                    pointFeature.setStyle(
-                        new Style({
-                            image: new Circle({
-                                radius: 5,
-                                fill: new Fill({
-                                    color:
-                                        index === 0
-                                            ? "green" // Start
-                                            : index === coordinates.length - 1
-                                            ? "red" // End
-                                            : "yellow", // Zlomové body
-                                }),
-                                stroke: new Stroke({
-                                    color: "white",
-                                    width: 1,
-                                }),
+                labelFeature.setStyle(
+                    new Style({
+                        text: new Text({
+                            text: `${polylineName}\nLinie ${segmentNumber}`,
+                            font: "12px Calibri,sans-serif",
+                            fill: new Fill({
+                                color: "white",
                             }),
-                        })
+                            backgroundFill: new Fill({
+                                color: "black",
+                            }),
+                            padding: [3, 3, 3, 3],
+                            textBaseline: "bottom",
+                            offsetY: -10,
+                        }),
+                        image: new RegularShape({
+                            points: 3, // Špička jako trojúhelník
+                            radius: 6,
+                            angle: Math.PI, // Otočení trojúhelníku dolů
+                            fill: new Fill({
+                                color: "black",
+                            }),
+                            displacement: [0, 5], // Posun špičky směrem dolů
+                        }),
+                    })
+                );
+
+                // Uložení původního stylu
+                labelFeature.set("originalStyle", labelFeature.getStyle());
+
+                // Nastavení vlastností pro identifikaci štítku
+                labelFeature.set("isLabel", true); // Obecný štítek
+                labelFeature.set("type", "info"); // Typ štítku: informační
+                labelFeature.set("polylineId", polylineId); // ID polyčáry
+
+                labelFeatures.push(labelFeature);
+                segmentNumber++;
+            });
+
+            return labelFeatures;
+        };
+
+        drawInteraction.on("drawend", (event) => {
+            const feature = event.feature;
+            const geometry = feature.getGeometry();
+            const polylineId = `Polylinie-${String(polylineCounter).padStart(
+                3,
+                "0"
+            )}`;
+            const polylineName = `Polylinie-${String(polylineCounter).padStart(
+                3,
+                "0"
+            )}`;
+            polylineCounter++;
+
+            if (geometry instanceof LineString) {
+                const coordinates = geometry.getCoordinates();
+
+                // Kontrola: pokud má geometrie méně než 2 body, ukonči funkci
+                if (coordinates.length < 2) {
+                    console.warn(
+                        "Geometrie má méně než dva body, nebude zpracována."
                     );
+                    return;
+                }
 
-                    pointSource.addFeature(pointFeature);
+                // Přidání segmentových štítků
+                const labelFeatures = createSegmentLabels(
+                    geometry,
+                    polylineName,
+                    polylineId
+                );
+                vectorSource.addFeatures(labelFeatures);
 
-                    // Přidání linie (kromě prvního bodu)
-                    if (index > 0) {
-                        const lineId = `Line_${index}_${newObjectId}`;
-                        const startPoint = points[index - 1]; // Předchozí bod
-                        const endPoint = points[index]; // Aktuální bod
-
-                        const lineData: LineData = {
-                            id: lineId,
-                            start: startPoint.id,
-                            end: endPoint.id,
-                            ...calculateLineProperties(
-                                [startPoint.lon, startPoint.lat],
-                                [endPoint.lon, endPoint.lat]
-                            ),
-                        };
-
-                        lines.push(lineData);
-
-                        // Vytvoření geometrie pro linii
-                        const lineFeature = new Feature({
-                            geometry: new LineString([
-                                transform(
-                                    [startPoint.lon, startPoint.lat],
-                                    "EPSG:4326",
-                                    "EPSG:3857"
-                                ),
-                                transform(
-                                    [endPoint.lon, endPoint.lat],
-                                    "EPSG:4326",
-                                    "EPSG:3857"
-                                ),
-                            ]),
-                            data: lineData, // Přidání dat k linii
-                        });
-                        lineFeature.setId(lineData.id);
-
-                        lineFeature.setStyle(
-                            new Style({
-                                stroke: new Stroke({
-                                    color: "blue",
-                                    width: 3,
-                                }),
-                            })
+                // Přidání štítků "Start" a "Konec"
+                const startEndLabels = createStartEndLabels(
+                    geometry,
+                    polylineId
+                );
+                startEndLabels.forEach((labelFeature) => {
+                    const geometry =
+                        labelFeature.getGeometry() as Geometry | null; // Explicitní určení typu
+                    if (geometry instanceof Geometry) {
+                        labelFeature.setStyle(labelFeature.getStyle()); // Nastavení stylu
+                        vectorSource.addFeature(labelFeature); // Přidání do vektorového zdroje
+                    } else {
+                        console.error(
+                            "Geometrie pro štítek není platná nebo není podporována."
                         );
-
-                        lineSource.addFeature(lineFeature);
-
-                        // Přidání linie do kombinovaného seznamu
-                        combinedItems.push({
-                            type: "line",
-                            order: index * 2 - 1, // Linie mají liché pořadí
-                            data: lineData,
-                        });
                     }
                 });
 
-                // Vytvoření nového objektu a aktualizace stavu
-                const newObject: MapObject = {
-                    id: newObjectId,
-                    points,
-                    lines,
-                    combinedItems: combinedItems.sort(
-                        (a, b) => a.order - b.order
-                    ),
-                };
-
-                setFeaturesData((prev) => [
-                    ...prev,
-                    {
-                        ...newObject,
-                        combinedItems: combinedItems.sort(
-                            (a, b) => a.order - b.order
-                        ),
-                    },
-                ]);
+                // Nastavení ID a aktualizace dat
+                feature.setId(polylineId);
+                updateSegmentData(geometry, polylineId);
             }
         });
 
-        // Listener na pravé kliknutí
-        const handleRightClick = (event: MouseEvent) => {
-            event.preventDefault();
-            if (drawRef.current) {
-                drawRef.current.finishDrawing(); // Ukončení kreslení
+        modifyInteraction.on("modifyend", (event) => {
+            event.features.forEach((feature) => {
+                const polylineId = feature.getId();
+                const geometry = feature.getGeometry();
+
+                if (
+                    typeof polylineId === "string" &&
+                    geometry instanceof LineString
+                ) {
+                    // Mazání existujících segmentových štítků (bez "Start" a "Konec")
+                    const labelsToRemove = vectorSource
+                        .getFeatures()
+                        .filter((existingFeature) => {
+                            const style = existingFeature.getStyle();
+                            if (style instanceof Style) {
+                                const text = style.getText()?.getText();
+                                return (
+                                    existingFeature.get("isLabel") &&
+                                    existingFeature.get("polylineId") ===
+                                        polylineId &&
+                                    text !== "Start" &&
+                                    text !== "Konec"
+                                );
+                            }
+                            return false;
+                        });
+
+                    labelsToRemove.forEach((label) =>
+                        vectorSource.removeFeature(label)
+                    );
+
+                    // Vytvoření nových segmentových štítků
+                    const polylineName = `Polylinie ${
+                        polylineId.split("-")[1]
+                    }`;
+                    const labelFeatures = createSegmentLabels(
+                        geometry,
+                        polylineName,
+                        polylineId
+                    );
+
+                    // Přidání nových štítků a aktualizace jejich vlastností
+                    labelFeatures.forEach((labelFeature) => {
+                        vectorSource.addFeature(labelFeature);
+
+                        // Uložení původního stylu
+                        labelFeature.set(
+                            "originalStyle",
+                            labelFeature.getStyle()
+                        );
+                    });
+
+                    // Aktualizace dat (pokud je potřeba)
+                    updateSegmentData(geometry, polylineId);
+                }
+            });
+        });
+
+        map.addInteraction(drawInteraction);
+        map.addInteraction(modifyInteraction);
+
+        // Kliknutí pro zobrazení popupu
+        map.on("singleclick", (event) => {
+            const originalEvent = event.originalEvent;
+
+            // Zobrazení popupu pouze při běžném kliknutí (bez Ctrl nebo Alt)
+            if (!originalEvent.ctrlKey && !originalEvent.altKey) {
+                popup.setPosition(undefined); // Skryje popup, pokud není prvek
+                map.forEachFeatureAtPixel(event.pixel, (feature) => {
+                    const geometry = feature.getGeometry();
+
+                    if (geometry instanceof LineString) {
+                        const polylineId = feature.getId(); // Získání ID polyčáry
+
+                        if (typeof polylineId === "string") {
+                            const popupElement = popup.getElement();
+                            if (popupElement) {
+                                popupElement.innerHTML = `
+                            <div>
+                                <p>Opravdu si přejete smazat tento objekt?</p>
+                                <button class="btn btn-success" id="deletePolylineBtn">Smazat</button>
+                                <button class="btn btn-danger" id="deletePolylineBtn">Zrušit</button>
+                            </div>
+                        `;
+
+                                // Nastavení pozice popupu na souřadnice kliknutí
+                                popup.setPosition(event.coordinate);
+
+                                // Přidání event listeneru na tlačítko
+                                const deleteButton =
+                                    document.getElementById(
+                                        "deletePolylineBtn"
+                                    );
+                                if (deleteButton) {
+                                    deleteButton.onclick = () =>
+                                        deletePolyline(polylineId);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        // Metoda pro mazání konkrétní polyčáry
+        const deletePolyline = (polylineId: string) => {
+            // Najít a odstranit feature s daným ID
+            const featureToRemove = vectorSource
+                .getFeatures()
+                .find((feature) => feature.getId() === polylineId);
+
+            if (featureToRemove) {
+                vectorSource.removeFeature(featureToRemove);
+
+                // Odstranění všech štítků spojených s polyčárou (včetně "Start" a "Konec")
+                vectorSource.getFeatures().forEach((feature) => {
+                    if (
+                        feature.get("isLabel") &&
+                        feature.get("polylineId") === polylineId
+                    ) {
+                        vectorSource.removeFeature(feature);
+                    }
+                });
+
+                // Odebrání dat z tabulky
+                setSegmentData((prevData) =>
+                    prevData.filter((line) => line.id !== polylineId)
+                );
+
+                // Skrytí popupu po smazání
+                popup.setPosition(undefined);
+
+                console.log(
+                    `Polyčára s ID ${polylineId} byla úspěšně smazána.`
+                );
+            } else {
+                console.warn(`Polyčára s ID ${polylineId} nebyla nalezena.`);
             }
         };
 
+        const updateSegmentData = (geometry: any, id: string) => {
+            if (geometry instanceof LineString) {
+                const rawCoordinates: Coordinate[] = geometry.getCoordinates(); // EPSG:3857
+                const transformedCoordinates: number[][] =
+                    rawCoordinates.map(transformCoordinate);
+
+                const results: SegmentData[] = calculateAllProperties(
+                    transformedCoordinates
+                );
+
+                setSegmentData((prevData) => {
+                    const existingLineIndex = prevData.findIndex(
+                        (line) => line.id === id
+                    );
+
+                    if (existingLineIndex !== -1) {
+                        // Aktualizujeme existující polyčáru
+                        const updatedData = [...prevData];
+                        updatedData[existingLineIndex] = {
+                            id,
+                            segments: results,
+                        };
+                        return updatedData;
+                    } else {
+                        // Přidáme novou polyčáru
+                        return [...prevData, { id, segments: results }];
+                    }
+                });
+            }
+        };
+
+        // Funkce pro ukončení kreslení pravým klikem
+        const handleRightClick = (event: MouseEvent) => {
+            event.preventDefault(); // Zabrání zobrazení kontextového menu
+            drawInteraction.finishDrawing(); // Ukončení aktuálního kreslení
+        };
+
+        // Přidání listeneru na pravý klik
         map.getViewport().addEventListener("contextmenu", handleRightClick);
 
         return () => {
-            map.removeInteraction(drawInteraction);
+            map.setTarget(undefined);
             map.getViewport().removeEventListener(
                 "contextmenu",
                 handleRightClick
             );
         };
-    };
+    }, []);
 
-    // ------------------------------------------------------------------------------------------------------- režim inspekce
-    const activateInspection = () => {
-        if (!map) return;
+    useEffect(() => {
+        if (vectorSourceRef.current) {
+            const vectorSource = vectorSourceRef.current;
 
-        const tooltip = initializeTooltip();
-
-        if (!tooltip) {
-            console.warn("Tooltip element could not be initialized.");
-            return;
-        }
-
-        const tooltipOverlay = new Overlay({
-            element: tooltip,
-            offset: [0, -15],
-            positioning: "center-center",
-            stopEvent: false,
-        });
-        map.addOverlay(tooltipOverlay);
-
-        const selectInteraction = new Select({
-            condition: click,
-            style: (feature) => {
-                const geometry = feature.getGeometry();
-                if (geometry instanceof Point) {
-                    return new Style({
-                        image: new Circle({
-                            radius: 6,
-                            fill: new Fill({ color: "blue" }),
-                            stroke: new Stroke({ color: "white", width: 2 }),
-                        }),
-                    });
-                } else if (geometry instanceof LineString) {
-                    return [
-                        new Style({
-                            stroke: new Stroke({
-                                color: "white",
-                                width: 8,
-                            }),
-                        }),
-                        new Style({
-                            stroke: new Stroke({
-                                color: "blue",
-                                width: 4,
-                            }),
-                        }),
-                    ];
-                }
-                return new Style();
-            },
-        });
-
-        map.addInteraction(selectInteraction);
-
-        selectInteraction.on("select", (event) => {
-            const selectedFeatures = event.selected;
-
-            if (!tooltip) {
-                console.warn("Tooltip element not found.");
-                return;
-            }
-
-            if (!tooltipOverlay) {
-                console.warn("Tooltip overlay not found.");
-                return;
-            }
-
-            if (selectedFeatures.length > 0) {
-                const feature = selectedFeatures[0];
-                const geometry = feature.getGeometry();
-                const data = feature.get("data");
-
-                const tooltipText = generateTooltipContent(
-                    data,
-                    geometry,
-                    distanceUnit,
-                    angleUnit
+            // Získej všechny informační štítky
+            const infoLabels = vectorSource.getFeatures().filter((feature) => {
+                return (
+                    feature.get("isLabel") === true &&
+                    feature.get("type") === "info" // Identifikátor informačních štítků
                 );
-
-                if (tooltipText) {
-                    tooltip.innerHTML = tooltipText;
-                    tooltip.classList.remove("ol-tooltip-hidden");
-
-                    tooltipOverlay.setPosition(
-                        geometry instanceof LineString
-                            ? geometry.getFirstCoordinate()
-                            : geometry instanceof Point
-                            ? geometry.getCoordinates()
-                            : undefined
-                    );
-                }
-            } else {
-                tooltip.classList.add("ol-tooltip-hidden");
-            }
-        });
-
-        return () => {
-            map.removeInteraction(selectInteraction);
-            map.removeOverlay(tooltipOverlay);
-        };
-    };
-
-    // funkce pro modifikaci
-    const activateModification = () => {
-        if (!map || !lineSource || !pointSource) return;
-
-        const modifyInteraction = new Modify({
-            source: pointSource,
-        });
-
-        map.addInteraction(modifyInteraction);
-
-        // Dynamická aktualizace dat při modifikaci bodu
-        modifyInteraction.on("modifyend", (event) => {
-            const modifiedFeatures = event.features.getArray();
-            modifiedFeatures.forEach((feature) => {
-                const geometry = feature.getGeometry();
-
-                if (geometry instanceof Point) {
-                    const coordinates = geometry.getCoordinates(); // Nové souřadnice
-                    const transformedCoordinates = transform(
-                        coordinates,
-                        "EPSG:3857",
-                        "EPSG:4326"
-                    ) as [number, number];
-
-                    // Získání původních dat bodu
-                    const data = feature.get("data") as PointData;
-
-                    if (!data) {
-                        console.error("Data pro bod nebyla nalezena.");
-                        return;
-                    }
-
-                    // Aktualizace dat bodu
-                    data.lat = transformedCoordinates[1];
-                    data.lon = transformedCoordinates[0];
-
-                    // Dynamická aktualizace propojených linií
-                    updateConnectedLines(data.id);
-
-                    // Aktualizace tooltipu
-                    updateTooltip(feature);
-                }
             });
 
-            // Aktualizace zobrazených dat
-            setFeaturesData((prev) => [...prev]); // Triggers re-render
-        });
-    };
-
-    // Funkce na aktualizaci propojených linií
-    const updateConnectedLines = (pointId: string) => {
-        if (!lineSource || !pointSource) return;
-
-        // Iterace přes všechny linie
-        lineSource.getFeatures().forEach((lineFeature) => {
-            const lineData = lineFeature.get("data") as LineData;
-
-            // Zkontroluje, zda je bod připojen k linii
-            if (
-                !lineData ||
-                (lineData.start !== pointId && lineData.end !== pointId)
-            ) {
-                return;
-            }
-
-            // Získání startovního a koncového bodu
-            const startPoint = pointSource
-                ?.getFeatureById(lineData.start)
-                ?.get("data") as PointData;
-            const endPoint = pointSource
-                ?.getFeatureById(lineData.end)
-                ?.get("data") as PointData;
-
-            if (!startPoint || !endPoint) {
-                console.warn("Start nebo end point nebyl nalezen.");
-                return;
-            }
-
-            // Aktualizace délky linie
-            lineData.length = calculateLineProperties(
-                [startPoint.lon, startPoint.lat],
-                [endPoint.lon, endPoint.lat]
-            ).length;
-
-            // Aktualizace geometrie linie
-            lineFeature.setGeometry(
-                new LineString([
-                    transform(
-                        [startPoint.lon, startPoint.lat],
-                        "EPSG:4326",
-                        "EPSG:3857"
-                    ),
-                    transform(
-                        [endPoint.lon, endPoint.lat],
-                        "EPSG:4326",
-                        "EPSG:3857"
-                    ),
-                ])
-            );
-        });
-
-        console.log("Connected lines updated.");
-    };
-
-    // Funkce na aktualizaci tooltipu
-    const updateTooltip = (feature: Feature<Geometry>) => {
-        const tooltip = document.getElementById("tooltip");
-        if (!tooltip) return;
-
-        const data = feature.get("data");
-        const geometry = feature.getGeometry();
-
-        if (geometry instanceof Point) {
-            const tooltipText = generateTooltipContent(
-                data,
-                geometry,
-                distanceUnitRef.current,
-                angleUnitRef.current
-            );
-            tooltip.innerHTML = tooltipText;
-        }
-    };
-
-    // funkce pro mazání linie
-    const activateDeletion = () => {};
-
-    // Funkce pro deaktivaci všech interakcí
-    const deactivateAll = () => {
-        if (!map) return;
-
-        // Prochází všechny interakce a deaktivuje jen ty, které nejsou DragPan a MouseWheelZoom
-        map.getInteractions().forEach((interaction) => {
-            if (
-                !(
-                    interaction instanceof DragPan ||
-                    interaction instanceof MouseWheelZoom
-                )
-            ) {
-                interaction.setActive(false);
-            }
-        });
-
-        // Odstranění všech overlayů (např. tooltipy)
-        map.getOverlays().clear();
-
-        // Odstranění specifických interakcí, pokud existují
-        if (drawRef.current) {
-            map.removeInteraction(drawRef.current);
-            drawRef.current = null;
-        }
-    };
-
-    //---------------------------------------------------------------------------------------------------------- pomocné funkce
-    // inicializace tooltipu
-    const initializeTooltip = (): HTMLElement | null => {
-        let tooltip = document.getElementById("tooltip");
-        if (!tooltip) {
-            tooltip = document.createElement("div");
-            tooltip.id = "tooltip";
-            tooltip.className = "ol-tooltip ol-tooltip-hidden";
-            document.body.appendChild(tooltip);
-        }
-        return tooltip;
-    };
-
-    // reset zvýraznění vybraných bodů a liní
-    const resetSelection = () => {
-        if (!map) return;
-
-        map.getInteractions().forEach((interaction) => {
-            if (interaction instanceof Select) {
-                const selectedFeatures = interaction.getFeatures();
-                selectedFeatures.clear(); // Vymaže aktuální výběr
-            }
-        });
-    };
-
-    // šablona pro tooltip
-    const generateTooltipContent = (
-        data: any,
-        geometry: Geometry | undefined,
-        currentDistanceUnit: "km" | "mil",
-        currentAngleUnit: "°" | "rad"
-    ): string => {
-        if (!data || !geometry) return "";
-
-        if (geometry instanceof Point) {
-            return `
-                <strong>${data.id}</strong><br> 
-                Lat: ${data.lat}<br>
-                Lon: ${data.lon}<br>
-                ${
-                    data.angle !== undefined
-                        ? `Úhel: ${convertAngle(
-                              data.angle,
-                              currentAngleUnit
-                          )} ${currentAngleUnit}`
-                        : ""
+            // Skrýt nebo zobrazit informační štítky
+            infoLabels.forEach((label) => {
+                if (showInfoLabels) {
+                    // Obnovit původní styl
+                    const originalStyle = label.get("originalStyle");
+                    if (originalStyle) {
+                        label.setStyle(originalStyle);
+                    }
+                } else {
+                    // Skrýt štítek
+                    label.setStyle(undefined);
                 }
-            `;
-        } else if (geometry instanceof LineString) {
-            return `
-                <strong> ${data.id}</strong><br> 
-                Azimut: ${convertAngle(
-                    data.azimuth,
-                    currentAngleUnit
-                )} ${currentAngleUnit}<br>
-                Délka: ${convertDistance(
-                    data.length,
-                    currentDistanceUnit
-                )} ${currentDistanceUnit}
-            `;
+            });
         }
-
-        return "";
-    };
-
-    function haversineDistance(
-        coord1: [number, number],
-        coord2: [number, number]
-    ): number {
-        const R = 6371e3; // Poloměr Země v metrech
-        const [lon1, lat1] = coord1.map((v) => (v * Math.PI) / 180); // Převod na radiány
-        const [lon2, lat2] = coord2.map((v) => (v * Math.PI) / 180);
-
-        const deltaLat = lat2 - lat1;
-        const deltaLon = lon2 - lon1;
-
-        const a =
-            Math.sin(deltaLat / 2) ** 2 +
-            Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        return R * c; // Výsledná vzdálenost v metrech
-    }
-
-    function calculateLineProperties(
-        coord1: [number, number],
-        coord2: [number, number]
-    ): { azimuth: number; length: number } {
-        const [lon1, lat1] = coord1;
-        const [lon2, lat2] = coord2;
-
-        const deltaLon = lon2 - lon1;
-        const deltaLat = lat2 - lat1;
-
-        let azimuth = Math.atan2(deltaLon, deltaLat) * (180 / Math.PI);
-        if (azimuth < 0) azimuth += 360;
-
-        const length = haversineDistance(coord1, coord2); // Přesnější výpočet
-
-        console.log("Přesná délka (m):", length);
-
-        return { azimuth, length: length / 1000 }; // Převod na kilometry
-    }
-
-    function calculateAngle(
-        prev: [number, number],
-        current: [number, number],
-        next: [number, number]
-    ): number {
-        const v1 = [prev[0] - current[0], prev[1] - current[1]];
-        const v2 = [next[0] - current[0], next[1] - current[1]];
-
-        const dotProduct = v1[0] * v2[0] + v1[1] * v2[1];
-        const magnitude1 = Math.sqrt(v1[0] ** 2 + v1[1] ** 2);
-        const magnitude2 = Math.sqrt(v2[0] ** 2 + v2[1] ** 2);
-
-        return (
-            Math.acos(dotProduct / (magnitude1 * magnitude2)) * (180 / Math.PI)
-        );
-    }
-
-    const convertDistance = (value: number, unit: "km" | "mil"): string => {
-        return unit === "km" ? value.toFixed(2) : (value * 0.621371).toFixed(2);
-    };
-
-    const convertAngle = (value: number, unit: "°" | "rad"): string => {
-        return unit === "°"
-            ? value.toFixed(2)
-            : ((value * Math.PI) / 180).toFixed(2);
-    };
+    }, [showInfoLabels]);
 
     return (
-        <div className="container-fluid">
+        <div className="container mt-4">
             <div className="row">
-                <div className="col-9">
-                    <div className="mt-3">
-                        <button
-                            className={`btn btn-outline-success me-2 ${
-                                currentAction === "line" ? "active" : ""
-                            }`}
-                            onClick={() => setCurrentAction("line")}>
-                            Návrh
-                        </button>
-                        <button
-                            className={`btn btn-outline-secondary me-2 ${
-                                currentAction === "inspect" ? "active" : ""
-                            }`}
-                            onClick={() => setCurrentAction("inspect")}>
-                            Inspekce prvků
-                        </button>
-                        <button
-                            className={`btn btn-outline-primary me-2 ${
-                                currentAction === "move" ? "active" : ""
-                            }`}
-                            onClick={() => setCurrentAction("move")}>
-                            Modifikace
-                        </button>
-                        <button
-                            className={`btn btn-outline-warning me-2 ${
-                                currentAction === "delete" ? "active" : ""
-                            }`}
-                            onClick={() => setCurrentAction("delete")}>
-                            Smazat linii
-                        </button>
-                        <button
-                            className="btn btn-outline-danger"
-                            onClick={() => {
-                                lineSource?.clear();
-                                pointSource?.clear();
-                                setFeaturesData([]);
-                                // Skrytí tooltipu
-                                const tooltip =
-                                    document.getElementById("tooltip");
-                                if (tooltip) {
-                                    tooltip.classList.add("ol-tooltip-hidden");
-                                }
-                            }}>
-                            Smazat vše
-                        </button>
-                    </div>
-                    <div
-                        className="map-style"
-                        ref={mapRef}
-                        onContextMenu={(e) => e.preventDefault()}>
-                        <div
-                            id="tooltip"
-                            className="ol-tooltip ol-tooltip-hidden"></div>
-                    </div>
-                </div>
-
-                <div className="col-3">
-                    <div className="row">
-                        <div className="col">
-                            <h2 className="mb-3">Parametry</h2>
+                {/* Mapa */}
+                <div className="col-lg-6 col-md-12 mb-4">
+                    <div className="card">
+                        <div className="card-header bg-primary text-white">
+                            <h5 className="mb-0">Mapa</h5>
                         </div>
-                    </div>
-                    <div className="row">
-                        <div className="col">
-                            <div className="mb-3">
-                                <label className="me-2">Jednotky:</label>
-                                <select
-                                    className="form-select d-inline w-auto"
-                                    value={distanceUnit}
-                                    onChange={(e) =>
-                                        setDistanceUnit(
-                                            e.target.value as "km" | "mil"
-                                        )
-                                    }>
-                                    <option value="km">kilometry</option>
-                                    <option value="mil">míle</option>
-                                </select>
-                                <select
-                                    className="form-select d-inline w-auto"
-                                    value={angleUnit}
-                                    onChange={(e) =>
-                                        setAngleUnit(
-                                            e.target.value as "°" | "rad"
-                                        )
-                                    }>
-                                    <option value="°">stupně</option>
-                                    <option value="rad">radiány</option>
-                                </select>
+                        <div className="card-body p-0">
+                            <div className="map-style" ref={mapContainerRef}>
+                                <div ref={popupRef} className="ol-popup">
+                                    {popupContent}
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div className="row scrollable-section">
-                        <div className="col">
-                            <h2>Data</h2>
-                            {featuresData.map((mapObject) => (
-                                <div key={mapObject.id}>
-                                    <h4>{mapObject.id}</h4>
-                                    {mapObject.combinedItems.map((item, i) => (
-                                        <div key={i}>
-                                            {item.type === "point" ? (
-                                                <>
-                                                    <p>Bod: {item.data.id}</p>
-                                                    <p>
-                                                        Lat:{" "}
-                                                        {(
-                                                            item.data as PointData
-                                                        ).lat.toFixed(6)}
-                                                    </p>
-                                                    <p>
-                                                        Lon:{" "}
-                                                        {(
-                                                            item.data as PointData
-                                                        ).lon.toFixed(6)}
-                                                    </p>
-                                                    {(item.data as PointData)
-                                                        .angle !==
-                                                        undefined && (
-                                                        <p>
-                                                            Úhel:{" "}
-                                                            {convertAngle(
-                                                                (
-                                                                    item.data as PointData
-                                                                ).angle!,
-                                                                angleUnit
-                                                            )}{" "}
-                                                            {angleUnit}
-                                                        </p>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <p>Linie: {item.data.id}</p>
-                                                    <p>
-                                                        Azimut:{" "}
-                                                        {convertAngle(
-                                                            (
-                                                                item.data as LineData
-                                                            ).azimuth,
-                                                            angleUnit
-                                                        )}{" "}
-                                                        {angleUnit}
-                                                    </p>
-                                                    <p>
-                                                        Délka:{" "}
-                                                        {convertDistance(
-                                                            (
-                                                                item.data as LineData
-                                                            ).length,
-                                                            distanceUnit
-                                                        )}{" "}
-                                                        {distanceUnit}
-                                                    </p>
-                                                </>
-                                            )}
-                                            <hr />
-                                        </div>
-                                    ))}
-                                    {/* Přidání celkové délky */}
-                                    <h5>
-                                        Celková délka:{" "}
-                                        {convertDistance(
-                                            mapObject.lines.reduce(
-                                                (sum: number, line: LineData) =>
-                                                    sum + line.length,
-                                                0
-                                            ),
-                                            distanceUnit
-                                        )}{" "}
-                                        {distanceUnit}
-                                    </h5>
-                                    <hr />
+                </div>
+                {/* Ovládání a nastavení */}
+                <div className="col-lg-6 col-md-12">
+                    <div className="card mb-4">
+                        <div className="card-header bg-secondary text-white">
+                            <h5 className="mb-0">Ovládání a nastavení</h5>
+                        </div>
+                        <div className="card-body">
+                            <form className="row g-3">
+                                <div className="col-md-6">
+                                    <label
+                                        htmlFor="distanceUnit"
+                                        className="form-label">
+                                        Jednotka vzdálenosti
+                                    </label>
+                                    <select
+                                        id="distanceUnit"
+                                        value={distanceUnit}
+                                        onChange={(e) =>
+                                            setDistanceUnit(
+                                                e.target.value as "km" | "mil"
+                                            )
+                                        }
+                                        className="form-select">
+                                        <option value="km">Kilometry</option>
+                                        <option value="mil">Míle</option>
+                                    </select>
                                 </div>
-                            ))}
+
+                                <div className="col-md-6">
+                                    <label
+                                        htmlFor="angleUnit"
+                                        className="form-label">
+                                        Jednotka úhlu
+                                    </label>
+                                    <select
+                                        id="angleUnit"
+                                        value={angleUnit}
+                                        onChange={(e) =>
+                                            setAngleUnit(
+                                                e.target.value as "°" | "rad"
+                                            )
+                                        }
+                                        className="form-select">
+                                        <option value="°">Stupně</option>
+                                        <option value="rad">Radiány</option>
+                                    </select>
+                                </div>
+
+                                <div className="col-md-12">
+                                    <div className="form-check">
+                                        <input
+                                            type="checkbox"
+                                            id="showInfoLabels"
+                                            checked={showInfoLabels}
+                                            onChange={(e) =>
+                                                setShowInfoLabels(
+                                                    e.target.checked
+                                                )
+                                            }
+                                            className="form-check-input"
+                                        />
+                                        <label
+                                            htmlFor="showInfoLabels"
+                                            className="form-check-label">
+                                            Zobrazit informační prvky
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="col-md-12 text-center">
+                                    <button
+                                        type="button"
+                                        className="btn btn-danger w-100"
+                                        onClick={clearAllFeatures}>
+                                        Smazat vše
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    {/* Tabulka dat */}
+                    <div className="card">
+                        <div className="card-header bg-success text-white">
+                            <h5>Data všech polylinií</h5>
+                        </div>
+                        <div className="card-body p-0 scrollable-table">
+                            <table className="table table-striped table-hover m-0">
+                                <thead className="sticky-top">
+                                    <tr className="bg-light">
+                                        <th>Linie</th>
+                                        <th>
+                                            Délka (
+                                            {distanceUnit === "km"
+                                                ? "km"
+                                                : "mil"}
+                                            )
+                                        </th>
+                                        <th>
+                                            Azimut (
+                                            {angleUnit === "°" ? "°" : "rad"})
+                                        </th>
+                                        <th>
+                                            Úhel (
+                                            {angleUnit === "°" ? "°" : "rad"})
+                                        </th>
+                                        <th>Počáteční souřadnice (lat, lon)</th>
+                                        <th>Koncové souřadnice (lat, lon)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {segmentData.map((line) => (
+                                        <React.Fragment key={line.id}>
+                                            <tr>
+                                                <td
+                                                    colSpan={6}
+                                                    className="sticky-polyline text-primary text-center fw-bold">
+                                                    {line.id}
+                                                </td>
+                                            </tr>
+                                            {line.segments.map(
+                                                (data, index) => (
+                                                    <tr key={index}>
+                                                        <td>{data.segment}</td>
+                                                        <td>
+                                                            {convertDistance(
+                                                                data.length,
+                                                                distanceUnit
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {convertAngle(
+                                                                data.azimuth,
+                                                                angleUnit
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            {data.angleToNext !==
+                                                            undefined
+                                                                ? convertAngle(
+                                                                      data.angleToNext,
+                                                                      angleUnit
+                                                                  )
+                                                                : "-"}
+                                                        </td>
+                                                        <td>
+                                                            {`${data.startLatLon[0].toFixed(
+                                                                6
+                                                            )}, ${data.startLatLon[1].toFixed(
+                                                                6
+                                                            )}`}
+                                                        </td>
+                                                        <td>
+                                                            {`${data.endLatLon[0].toFixed(
+                                                                6
+                                                            )}, ${data.endLatLon[1].toFixed(
+                                                                6
+                                                            )}`}
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            )}
+                                            {/* Zobrazení celkové délky pro aktuální polylinii */}
+                                            <tr>
+                                                <td
+                                                    colSpan={6}
+                                                    className="text-end fw-bold">
+                                                    Celková délka:{" "}
+                                                    {convertDistance(
+                                                        calculateTotalLength(
+                                                            line.segments
+                                                        ),
+                                                        distanceUnit
+                                                    )}{" "}
+                                                    {distanceUnit === "km"
+                                                        ? "km"
+                                                        : "mil"}
+                                                </td>
+                                            </tr>
+                                        </React.Fragment>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
