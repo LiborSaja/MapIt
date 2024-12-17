@@ -1,0 +1,13 @@
+.carousel-control-prev-icon,
+.carousel-control-next-icon {
+    filter: invert(100%) sepia(100%) saturate(1000%) hue-rotate(180deg);
+    margin-top: 25vw;
+}
+
+.carousel-control-prev {
+    left: -25%; /* Posune tlačítko doleva */
+}
+
+.carousel-control-next {
+    right: -25%; /* Posune tlačítko doprava */
+}

@@ -3,11 +3,11 @@ export type SegmentData = {
     length: number;
     azimuth: number;
     angleToNext?: number;
-    startLatLon: [number, number]; // Souřadnice začátku segmentu
-    endLatLon: [number, number]; // Souřadnice konce segmentu
+    startLatLon: [number, number];
+    endLatLon: [number, number];
 };
 
 export type LineData = {
-    id: string; // Unikátní ID pro každou polyčáru
-    segments: SegmentData[]; // Pole dat segmentů pro tuto polyčáru
+    id: string;
+    segments: SegmentData[];
 };

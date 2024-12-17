@@ -10,3 +10,29 @@
 .bi-compass {
     font-size: 3vw;
 }
+
+/* Vlastní styl pro aktivní položku */
+/* Styl pro aktivní položku v menu */
+.nav-link {
+    position: relative;
+    text-decoration: none; /* Odebere základní podtržení */
+    color: inherit; /* Zajistí dědičnost barvy textu */
+}
+
+.nav-link.active::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px; /* Umístí podtržení pod text */
+    width: 100%;
+    height: 2px;
+    background-color: #0d6efd; /* Moderní modrá barva */
+    transform: scaleX(0); /* Inicializace bez podtržení */
+    transition: transform 0.3s ease-in-out;
+    transform-origin: center; /* Animace začne ze středu */
+}
+
+.nav-link.active:hover::after,
+.nav-link.active::after {
+    transform: scaleX(1); /* Zvětší podtržení na celou šířku */
+}

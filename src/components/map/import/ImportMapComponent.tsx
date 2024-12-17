@@ -493,7 +493,7 @@ const ImportMapComponent: React.FC = () => {
                 handleRightClick
             );
         };
-    }, []);
+    }, [polylineCounter]);
 
     useEffect(() => {
         if (vectorSourceRef.current) {
@@ -524,13 +524,16 @@ const ImportMapComponent: React.FC = () => {
     }, [showInfoLabels]);
 
     return (
-        <div className="container mt-4">
+        <div className="container-fluid mt-4">
             <div className="row">
                 {/* Mapa */}
                 <div className="col-lg-6 col-md-12 mb-4">
                     <div className="card">
                         <div className="card-header bg-primary text-white">
-                            <h5 className="mb-0">Mapa</h5>
+                            <h5 className="mb-0">
+                                Mapa
+                                <i className="bi bi-question-circle ms-2"></i>
+                            </h5>
                         </div>
                         <div className="card-body p-0">
                             <div className="map-style" ref={mapContainerRef}>

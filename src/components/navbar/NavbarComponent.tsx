@@ -1,17 +1,14 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom"; // Import NavLink
 import "./NavbarComponent.css";
 
 const NavbarComponent: React.FC = () => {
     return (
         <nav className="navbar navbar-expand-lg navbar-light bg-light">
             <div className="container-fluid">
-                {/* Logo */}
-                <Link className="navbar-brand" to="/about">
+                <NavLink className="navbar-brand" to="/about">
                     <i className="bi bi-compass d-block"></i>
-                </Link>
-
-                {/* Tlačítko pro mobilní menu */}
+                </NavLink>
                 <button
                     className="navbar-toggler"
                     type="button"
@@ -22,27 +19,37 @@ const NavbarComponent: React.FC = () => {
                     aria-label="Toggle navigation">
                     <span className="navbar-toggler-icon"></span>
                 </button>
-
-                {/* Menu */}
                 <div className="collapse navbar-collapse" id="navbarNav">
                     <ul className="navbar-nav text-center">
                         <li className="nav-item">
-                            <Link className="nav-link" to="/about">
+                            <NavLink
+                                className={({ isActive }) =>
+                                    isActive ? "nav-link active" : "nav-link"
+                                }
+                                to="/about">
                                 <i className="bi bi-house-door-fill d-block"></i>
                                 O aplikaci
-                            </Link>
+                            </NavLink>
                         </li>
                         <li className="nav-item">
-                            <Link className="nav-link" to="/guide">
+                            <NavLink
+                                className={({ isActive }) =>
+                                    isActive ? "nav-link active" : "nav-link"
+                                }
+                                to="/guide">
                                 <i className="bi bi-info-circle-fill d-block"></i>
                                 Průvodce
-                            </Link>
+                            </NavLink>
                         </li>
                         <li className="nav-item">
-                            <Link className="nav-link" to="/map">
+                            <NavLink
+                                className={({ isActive }) =>
+                                    isActive ? "nav-link active" : "nav-link"
+                                }
+                                to="/map">
                                 <i className="bi bi-map-fill d-block"></i>
                                 Mapa
-                            </Link>
+                            </NavLink>
                         </li>
                     </ul>
                 </div>
