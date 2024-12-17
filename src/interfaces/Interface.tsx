@@ -1,3 +1,5 @@
+//modely pro zobrazování dat
+//model pro jednu linii polylinie
 export type SegmentData = {
     segment: number;
     length: number;
@@ -7,6 +9,7 @@ export type SegmentData = {
     endLatLon: [number, number];
 };
 
+//model pro celou polylinii
 export type LineData = {
     id: string;
     segments: SegmentData[];

@@ -5,9 +5,9 @@
 }
 
 .carousel-control-prev {
-    left: -25%; /* Posune tlačítko doleva */
+    left: -25%;
 }
 
 .carousel-control-next {
-    right: -25%; /* Posune tlačítko doprava */
+    right: -25%;
 }

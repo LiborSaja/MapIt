@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 
+// komponenta o aplikaci
 const AboutComponent: React.FC = () => {
     return (
         <div className="container-fluid mt-4">

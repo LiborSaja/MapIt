@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import "ol/ol.css";
-import { Feature, Map, Overlay, View } from "ol";
+import { Feature, Map, MapBrowserEvent, Overlay, View } from "ol";
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
 import OSM from "ol/source/OSM";
@@ -30,37 +30,57 @@ import {
 } from "../../../services/CalculationsService";
 
 const ImportMapComponent: React.FC = () => {
+    //--------------------------------------------------------------------------------------------------------- useRef deklarace
+    //připojení mapy OL na existující <div> v DOM
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
-    const [segmentData, setSegmentData] = useState<LineData[]>([]);
-    const [distanceUnit, setDistanceUnit] = useState<"km" | "mil">("km");
-    const [angleUnit, setAngleUnit] = useState<"°" | "rad">("°");
+    //reference na vektorový zdroj, který obsahuje všechny prvky (např. polyčáry a štítky) vykreslené na mapě
     const vectorSourceRef = useRef<VectorSource | null>(null);
+    //reference na odstraňovací popup
     const popupRef = useRef<HTMLDivElement | null>(null);
-    const [popupContent] = useState<string>("");
+
+    //------------------------------------------------------------------------------------------------------- useState deklarace
+    //uchování dat a aktualizace všech polyčar a jejich segmentů v poli typu LineData
+    const [segmentData, setSegmentData] = useState<LineData[]>([]);
+    //pro výpočtech délky a zobrazení v tabulce
+    const [distanceUnit, setDistanceUnit] = useState<"km" | "mil">("km");
+    //pro výpočet a zobrazení azimutů a úhlů segmentů
+    const [angleUnit, setAngleUnit] = useState<"°" | "rad">("°");
+    //pro podmíněné zobrazení štítků na základě uživatelské volby
     const [showInfoLabels, setShowInfoLabels] = useState(true);
+    //pro zobrazení/skrytí pop-up tooltipu po kliknutí na polylinii
+    const [showTooltip, setShowTooltip] = useState(false);
+    //pro statický obsah popupu
+    const [popupContent] = useState<string>("");
+    //pro četnost nakreslených polyčar a generování unikátních identifikátorů
     let polylineCounter = 0;
 
+    //vyčištění vektorového zdroje mapy a resetování dat v tabulce
     const clearAllFeatures = () => {
         if (vectorSourceRef.current) {
-            vectorSourceRef.current.clear(); // Odstraní všechny prvky z mapy
+            vectorSourceRef.current.clear();
         }
         setSegmentData([]);
     };
 
+    //-------------------------------------------------------------------------------------------------------------- useEffect()
+    //k inicializaci mapy OpenLayers a souvisejících interakcí, nastavení logiky kreslení a modifikace polylinií, a ke správě
+    //popupů a event listenerů
     useEffect(() => {
+        //kontrola že mapa nebude inicializována, dokud není DOM element k dispozici
         if (!mapContainerRef.current) return;
 
-        // Vektorový zdroj
+        //instance, která umožňuje vytvářet vektorové vrstvy a její uchování do useRef pro to, aby nedošlo k re-renderu
         const vectorSource = new VectorSource();
         vectorSourceRef.current = vectorSource;
 
+        //instance Overlay pro umístění HTML elementů nad mapou na určité souřadnice
         const popup = new Overlay({
             element: popupRef.current!,
             positioning: "bottom-center",
             stopEvent: false,
         });
 
-        // Inicializace mapy
+        //inicializace mapy - nastavuje cílový html element, vrstvy mapy, pohled na mapu, překryvy, ovládací prvky, interakce
         const map = new Map({
             target: mapContainerRef.current,
             layers: [
@@ -71,10 +91,10 @@ const ImportMapComponent: React.FC = () => {
                     source: vectorSource,
                     style: new Style({
                         stroke: new Stroke({
-                            color: "blue", // Barva polyčáry
-                            width: 4, // Tloušťka polyčáry
+                            color: "blue",
+                            width: 4,
                         }),
-                    }), // Nastavení stylu pro polyčáry
+                    }),
                 }),
             ],
             view: new View({
@@ -86,35 +106,37 @@ const ImportMapComponent: React.FC = () => {
             interactions: defaultInteractions({ onFocusOnly: false }),
         });
 
-        // vlastní podmínka pro Ctrl + Levé tlačítko myši
-        const ctrlAndLeftMouseCondition = (event: any) => {
-            const originalEvent = event.originalEvent;
+        //vlastní podmínka pro Ctrl + Levé tlačítko myši
+        const ctrlAndLeftMouseCondition = (
+            event: MapBrowserEvent<UIEvent>
+        ): boolean => {
+            const originalEvent = event.originalEvent as MouseEvent;
             return originalEvent.ctrlKey && originalEvent.button === 0;
         };
 
-        // Vytvoření interakce pro kreslení
+        //vytvoření interakce pro kreslení
         const drawInteraction = new Draw({
             source: vectorSource,
             type: "LineString",
             condition: ctrlAndLeftMouseCondition,
             style: new Style({
-                // Prázdný styl, aby se modré kolečko nezobrazovalo
                 stroke: new Stroke({
-                    color: "blue", // Barva čáry při kreslení
-                    width: 4, // Tloušťka čáry při kreslení
+                    color: "blue",
+                    width: 4,
                 }),
             }),
         });
 
-        // Interakce pro modifikaci
+        //vytvoření nterakce pro modifikaci
         const modifyInteraction = new Modify({
             source: vectorSource,
             condition: altKeyOnly,
         });
 
+        //
         const extentInteraction = new Extent({
-            condition: platformModifierKeyOnly, // Aktivace pouze při platformní klávese (např. Ctrl nebo Alt)
-            pointerStyle: [], // Odstraní modré kolečko
+            condition: platformModifierKeyOnly, 
+            pointerStyle: [], 
         });
         extentInteraction.setActive(false);
         map.addInteraction(extentInteraction);
@@ -446,7 +468,7 @@ const ImportMapComponent: React.FC = () => {
             }
         };
 
-        const updateSegmentData = (geometry: any, id: string) => {
+        const updateSegmentData = (geometry: LineString, id: string) => {
             if (geometry instanceof LineString) {
                 const rawCoordinates: Coordinate[] = geometry.getCoordinates(); // EPSG:3857
                 const transformedCoordinates: number[][] =
@@ -530,9 +552,53 @@ const ImportMapComponent: React.FC = () => {
                 <div className="col-lg-6 col-md-12 mb-4">
                     <div className="card">
                         <div className="card-header bg-primary text-white">
-                            <h5 className="mb-0">
+                            <h5 className="mb-0 tooltip-container">
                                 Mapa
-                                <i className="bi bi-question-circle ms-2"></i>
+                                {/* Otazník s toggle funkcí */}
+                                <i
+                                    className="bi bi-question-circle ms-2 tooltip-icon"
+                                    onClick={() =>
+                                        setShowTooltip((prev) => !prev)
+                                    }></i>
+                                {/* Tooltip s obsahem */}
+                                {showTooltip && (
+                                    <div className="tooltip-box">
+                                        {/* Zavírací tlačítko */}
+                                        <button
+                                            className="close-tooltip"
+                                            onClick={() =>
+                                                setShowTooltip(false)
+                                            }
+                                            aria-label="Close">
+                                            &times;
+                                        </button>
+
+                                        <h6 className="tooltip-header">
+                                            Nápověda k ovládání
+                                        </h6>
+                                        <ul className="mb-0">
+                                            <li>
+                                                Držte <strong>Levý Ctrl</strong>{" "}
+                                                a klikejte a pohybujte myší pro
+                                                kreslení polylinií.
+                                            </li>
+                                            <li>
+                                                Dvojím levoklikem, nebo
+                                                jednoduchým pravoklikem myši
+                                                ukončíte kreslení.
+                                            </li>
+                                            <li>
+                                                Pro modifikaci polyčar podržte{" "}
+                                                <strong>Alt</strong> a táhněte
+                                                liniemi, nebo body.
+                                            </li>
+                                            <li>
+                                                Kliknutím na polylinii ji můžete
+                                                odstranit.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                )}
                             </h5>
                         </div>
                         <div className="card-body p-0">

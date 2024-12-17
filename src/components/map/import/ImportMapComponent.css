@@ -68,3 +68,54 @@
     background-color: white; /* Udrží pozadí při překrytí */
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); /* Přidá mírný stín pro lepší čitelnost */
 }
+
+/* Tooltip wrapper */
+.tooltip-container {
+    position: relative;
+}
+
+/* Tooltip box */
+.tooltip-box {
+    position: absolute;
+    top: 120%;
+    left: 0;
+    width: 300px;
+    background-color: #f8f9fa;
+    color: black;
+    font-size: 1rem;
+    border: 1px solid black;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+}
+
+/* Tooltip header */
+.tooltip-header {
+    color: #0d6efd; /* Bootstrap primary */
+    margin-bottom: 0.5rem;
+}
+
+/* Icon styling */
+.tooltip-icon {
+    cursor: pointer;
+    font-size: 1.25rem;
+    color: white;
+}
+
+/* Zavírací tlačítko */
+.close-tooltip {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+    border: none;
+    background: none;
+    font-size: 1.25rem;
+    color: #6c757d;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close-tooltip:hover {
+    color: #dc3545; /* Červená barva na hover */
+}

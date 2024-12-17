@@ -1,5 +1,6 @@
 import "./GuideComponent.css";
 
+//komponenta průvodce
 const GuideComponent: React.FC = () => {
     return (
         <div className="container mybg">
