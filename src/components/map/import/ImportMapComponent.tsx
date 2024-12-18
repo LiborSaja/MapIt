@@ -65,6 +65,7 @@ const ImportMapComponent: React.FC = () => {
     //-------------------------------------------------------------------------------------------------------------- useEffect()
     //k inicializaci mapy OpenLayers a souvisejících interakcí, nastavení logiky kreslení a modifikace polylinií, a ke správě
     //popupů a event listenerů
+
     useEffect(() => {
         //kontrola že mapa nebude inicializována, dokud není DOM element k dispozici
         if (!mapContainerRef.current) return;
@@ -126,47 +127,52 @@ const ImportMapComponent: React.FC = () => {
                 }),
             }),
         });
+        map.addInteraction(drawInteraction);
 
-        //vytvoření nterakce pro modifikaci
+        //vytvoření interakce pro modifikaci
         const modifyInteraction = new Modify({
             source: vectorSource,
             condition: altKeyOnly,
         });
+        map.addInteraction(modifyInteraction);
 
-        //
+        //příprava mechanizmu pro kreslení a modifikaci při stisknuté určité klávese
         const extentInteraction = new Extent({
-            condition: platformModifierKeyOnly, 
-            pointerStyle: [], 
+            condition: platformModifierKeyOnly,
+            pointerStyle: [],
         });
         extentInteraction.setActive(false);
         map.addInteraction(extentInteraction);
 
-        // Povolení a zakázání interakce
+        //aktivace interakce při stisknuté určité klávese
         document.addEventListener("keydown", (event) => {
             if (event.key === "ctrl") {
-                extentInteraction.setActive(true); // Aktivuje interakci při stisku Shift
+                extentInteraction.setActive(true);
             }
         });
 
+        //deaktivace interakce při stisknuté určité klávese
         document.addEventListener("keyup", (event) => {
             if (event.key === "ctrl") {
-                extentInteraction.setActive(false); // Deaktivuje interakci při uvolnění Shift
+                extentInteraction.setActive(false);
             }
         });
 
+        //metoda pro vytvoření štítků start a konec
         const createStartEndLabels = (
             lineString: LineString,
             polylineId: string
         ) => {
+            //výstup metody pro štítky start a konec jako pole prvků
             const features: Feature<Point>[] = [];
 
-            // Zkontroluj, zda má polyčára alespoň dva body
+            //kontrola délky polylinie - pokud obsahuje méně jak 2 body, štítky se nevytvoří
             const coordinates = lineString.getCoordinates();
             if (coordinates.length < 2) {
-                return features; // Nepřidávej žádné štítky
+                return features;
             }
 
-            // Začátek polylinie
+            //začáteční štítek polylinie - souřadnice prvního bodu, instance Feature, styl štítku, nastavení vlastností
             if (lineString.getFirstCoordinate()) {
                 const startFeature = new Feature({
                     geometry: new Point(lineString.getFirstCoordinate()),
@@ -183,12 +189,12 @@ const ImportMapComponent: React.FC = () => {
                         }),
                     })
                 );
-                startFeature.set("isLabel", true); // Označení jako štítek
-                startFeature.set("polylineId", polylineId); // Přidání ID polyčáry
-                features.push(startFeature);
+                startFeature.set("isLabel", true); //přidání štítku start
+                startFeature.set("polylineId", polylineId); //přidání ID polylinie
+                features.push(startFeature); //přidání štítku do seznamu prvků
             }
 
-            // Konec polylinie
+            //koncový štítek polylinie - podobné předchozímu
             if (lineString.getLastCoordinate()) {
                 const endFeature = new Feature({
                     geometry: new Point(lineString.getLastCoordinate()),
@@ -205,31 +211,36 @@ const ImportMapComponent: React.FC = () => {
                         }),
                     })
                 );
-                endFeature.set("isLabel", true); // Označení jako štítek
-                endFeature.set("polylineId", polylineId); // Přidání ID polyčáry
+                endFeature.set("isLabel", true);
+                endFeature.set("polylineId", polylineId);
                 features.push(endFeature);
             }
 
+            //vracení pole
             return features;
         };
 
-        // Funkce pro vytvoření štítků
+        //metoda pro vytvoření štítků, které obsahují název polylinie, název individuální linie a její ID
         const createSegmentLabels = (
             lineString: LineString,
             polylineName: string,
             polylineId: string
         ) => {
+            //výstup metody jako pole štítků individuálních linií polylinie
             const labelFeatures: Feature<Point>[] = [];
             let segmentNumber = 1;
 
+            //iterace přes všechny segmenty polylinie, kde je každý segment definován dvojicí bodů start a end
             lineString.forEachSegment((start, end) => {
                 const segment = new LineString([start, end]);
                 const midPoint = segment.getCoordinateAt(0.5);
 
+                //instance prvku pro umístění štítku uprostřed každé individuální linie
                 const labelFeature = new Feature({
                     geometry: new Point(midPoint),
                 });
 
+                //styl štítku, RegularShape pro špičku štítku
                 labelFeature.setStyle(
                     new Style({
                         text: new Text({
@@ -246,35 +257,39 @@ const ImportMapComponent: React.FC = () => {
                             offsetY: -10,
                         }),
                         image: new RegularShape({
-                            points: 3, // Špička jako trojúhelník
+                            points: 3,
                             radius: 6,
-                            angle: Math.PI, // Otočení trojúhelníku dolů
+                            angle: Math.PI,
                             fill: new Fill({
                                 color: "black",
                             }),
-                            displacement: [0, 5], // Posun špičky směrem dolů
+                            displacement: [0, 5],
                         }),
                     })
                 );
 
-                // Uložení původního stylu
+                // Nastavení vlastností -> uložení původního stylu, vytvoření štítku, typ štítku, přiřazení k ID polylinie
                 labelFeature.set("originalStyle", labelFeature.getStyle());
+                labelFeature.set("isLabel", true);
+                labelFeature.set("type", "info");
+                labelFeature.set("polylineId", polylineId);
 
-                // Nastavení vlastností pro identifikaci štítku
-                labelFeature.set("isLabel", true); // Obecný štítek
-                labelFeature.set("type", "info"); // Typ štítku: informační
-                labelFeature.set("polylineId", polylineId); // ID polyčáry
-
+                //přidání štítků do seznamu s unikátním ID každé individuální linie polylinie
                 labelFeatures.push(labelFeature);
                 segmentNumber++;
             });
 
+            //vracení pole
             return labelFeatures;
         };
 
+        //událost, která se spustí, když uživatel dokončí kreslení polylinie pomocí výše definované interakce Draw
         drawInteraction.on("drawend", (event) => {
+            //proměnná pro polylinii
             const feature = event.feature;
+            //geometrie polylinie -> instance LineString
             const geometry = feature.getGeometry();
+            //unikátní ID a název polylinií
             const polylineId = `Polylinie-${String(polylineCounter).padStart(
                 3,
                 "0"
@@ -285,18 +300,16 @@ const ImportMapComponent: React.FC = () => {
             )}`;
             polylineCounter++;
 
+            //kontrola, že prvek je polylinie
             if (geometry instanceof LineString) {
                 const coordinates = geometry.getCoordinates();
 
-                // Kontrola: pokud má geometrie méně než 2 body, ukonči funkci
+                //kontrola, že má geometrie 2 a více bodů, jinak ukončí funkci
                 if (coordinates.length < 2) {
-                    console.warn(
-                        "Geometrie má méně než dva body, nebude zpracována."
-                    );
                     return;
                 }
 
-                // Přidání segmentových štítků
+                //přidání liniových štítků pomocí výše definované metody, a přidání do vektorového zdroje pro viditelnost na mapě
                 const labelFeatures = createSegmentLabels(
                     geometry,
                     polylineName,
@@ -304,62 +317,57 @@ const ImportMapComponent: React.FC = () => {
                 );
                 vectorSource.addFeatures(labelFeatures);
 
-                // Přidání štítků "Start" a "Konec"
+                //přidání štítků "Start" a "Konec" pomocí výše definované metody
                 const startEndLabels = createStartEndLabels(
                     geometry,
                     polylineId
                 );
+
+                //iterace přes štítky start a konec, nastavuje styl a přidává je do vektorového zdroje
                 startEndLabels.forEach((labelFeature) => {
                     const geometry =
-                        labelFeature.getGeometry() as Geometry | null; // Explicitní určení typu
+                        labelFeature.getGeometry() as Geometry | null;
                     if (geometry instanceof Geometry) {
-                        labelFeature.setStyle(labelFeature.getStyle()); // Nastavení stylu
-                        vectorSource.addFeature(labelFeature); // Přidání do vektorového zdroje
-                    } else {
-                        console.error(
-                            "Geometrie pro štítek není platná nebo není podporována."
-                        );
+                        labelFeature.setStyle(labelFeature.getStyle());
+                        vectorSource.addFeature(labelFeature);
                     }
                 });
 
-                // Nastavení ID a aktualizace dat
+                //přiřazení ID polyliniím a aktualizace dat polylinií
                 feature.setId(polylineId);
                 updateSegmentData(geometry, polylineId);
             }
         });
 
+        //událost, která se spustí, když uživatel dokončí modifikaci polylinie pomocí výše definované interakce Modify
+        //odstraňuje staré štítky, přidává nové a aktualizuje data polylinie
         modifyInteraction.on("modifyend", (event) => {
+            //iterace přes všechny modifikované prvky při této události
             event.features.forEach((feature) => {
+                //získání ID a geometrie
                 const polylineId = feature.getId();
                 const geometry = feature.getGeometry();
 
+                //kontrola pro validní ID a geometrii polyčáry
                 if (
                     typeof polylineId === "string" &&
                     geometry instanceof LineString
                 ) {
-                    // Mazání existujících segmentových štítků (bez "Start" a "Konec")
+                    //odstranění všech štítků souvisejících s polyčárou z vektorového zdroje (liniové + start a konec)
                     const labelsToRemove = vectorSource
                         .getFeatures()
                         .filter((existingFeature) => {
-                            const style = existingFeature.getStyle();
-                            if (style instanceof Style) {
-                                const text = style.getText()?.getText();
-                                return (
-                                    existingFeature.get("isLabel") &&
-                                    existingFeature.get("polylineId") ===
-                                        polylineId &&
-                                    text !== "Start" &&
-                                    text !== "Konec"
-                                );
-                            }
-                            return false;
+                            return (
+                                existingFeature.get("isLabel") &&
+                                existingFeature.get("polylineId") === polylineId
+                            );
                         });
 
                     labelsToRemove.forEach((label) =>
                         vectorSource.removeFeature(label)
                     );
 
-                    // Vytvoření nových segmentových štítků
+                    //vytvoření nových liniových štítků, poté přidání do vektorového zdroje
                     const polylineName = `Polylinie ${
                         polylineId.split("-")[1]
                     }`;
@@ -368,40 +376,41 @@ const ImportMapComponent: React.FC = () => {
                         polylineName,
                         polylineId
                     );
+                    vectorSource.addFeatures(labelFeatures);
 
-                    // Přidání nových štítků a aktualizace jejich vlastností
-                    labelFeatures.forEach((labelFeature) => {
-                        vectorSource.addFeature(labelFeature);
+                    //vytvoření nových štítků "Start" a "Konec" a přidání do vektorového zdroje
+                    const startEndLabels = createStartEndLabels(
+                        geometry,
+                        polylineId
+                    );
+                    startEndLabels.forEach((labelFeature) =>
+                        vectorSource.addFeature(labelFeature)
+                    );
 
-                        // Uložení původního stylu
-                        labelFeature.set(
-                            "originalStyle",
-                            labelFeature.getStyle()
-                        );
-                    });
-
-                    // Aktualizace dat (pokud je potřeba)
+                    //aktualizace dat polylinií v tabulce
                     updateSegmentData(geometry, polylineId);
                 }
             });
         });
 
-        map.addInteraction(drawInteraction);
-        map.addInteraction(modifyInteraction);
-
-        // Kliknutí pro zobrazení popupu
+        //zaregistrování listeneru pro kliknutí na mapu
         map.on("singleclick", (event) => {
             const originalEvent = event.originalEvent;
 
-            // Zobrazení popupu pouze při běžném kliknutí (bez Ctrl nebo Alt)
+            //zobrazení popupu pouze při běžném kliknutí (bez Ctrl nebo Alt)
             if (!originalEvent.ctrlKey && !originalEvent.altKey) {
-                popup.setPosition(undefined); // Skryje popup, pokud není prvek
+                //schová popup, pokud je kliknuto mimo prvek
+                popup.setPosition(undefined);
+
+                //iterace přes prvky v místě kliknutí
                 map.forEachFeatureAtPixel(event.pixel, (feature) => {
                     const geometry = feature.getGeometry();
 
+                    //získá ID polyčáry
                     if (geometry instanceof LineString) {
-                        const polylineId = feature.getId(); // Získání ID polyčáry
+                        const polylineId = feature.getId();
 
+                        //vrátí html element a vloží do něj definovaný obsah
                         if (typeof polylineId === "string") {
                             const popupElement = popup.getElement();
                             if (popupElement) {
@@ -413,10 +422,10 @@ const ImportMapComponent: React.FC = () => {
                             </div>
                         `;
 
-                                // Nastavení pozice popupu na souřadnice kliknutí
+                                //nastavení pozice popupu na souřadnice kliknutí
                                 popup.setPosition(event.coordinate);
 
-                                // Přidání event listeneru na tlačítko
+                                //přidání event listeneru na tlačítko, které zavolá metodu pro mazání, definovanou níže
                                 const deleteButton =
                                     document.getElementById(
                                         "deletePolylineBtn"
@@ -432,9 +441,8 @@ const ImportMapComponent: React.FC = () => {
             }
         });
 
-        // Metoda pro mazání konkrétní polyčáry
+        //metoda mazání konkrétní polylinie -> získá všechny prvky, získá konkrétní ID polylinie, odstraní ji z vektorového zdroje
         const deletePolyline = (polylineId: string) => {
-            // Najít a odstranit feature s daným ID
             const featureToRemove = vectorSource
                 .getFeatures()
                 .find((feature) => feature.getId() === polylineId);
@@ -442,7 +450,7 @@ const ImportMapComponent: React.FC = () => {
             if (featureToRemove) {
                 vectorSource.removeFeature(featureToRemove);
 
-                // Odstranění všech štítků spojených s polyčárou (včetně "Start" a "Konec")
+                //odstranění všech štítků spojených s polylinií (včetně "Start" a "Konec")
                 vectorSource.getFeatures().forEach((feature) => {
                     if (
                         feature.get("isLabel") &&
@@ -452,39 +460,42 @@ const ImportMapComponent: React.FC = () => {
                     }
                 });
 
-                // Odebrání dat z tabulky
+                //odebrání dat z tabulky
                 setSegmentData((prevData) =>
                     prevData.filter((line) => line.id !== polylineId)
                 );
 
-                // Skrytí popupu po smazání
+                //skrytí popupu po smazání
                 popup.setPosition(undefined);
-
-                console.log(
-                    `Polyčára s ID ${polylineId} byla úspěšně smazána.`
-                );
-            } else {
-                console.warn(`Polyčára s ID ${polylineId} nebyla nalezena.`);
             }
         };
 
+        //metoda pro aktualizaci dat polylinie
         const updateSegmentData = (geometry: LineString, id: string) => {
+            //kontrola zda jde o polylinii
             if (geometry instanceof LineString) {
-                const rawCoordinates: Coordinate[] = geometry.getCoordinates(); // EPSG:3857
+                //získání pole souřadnic
+                const rawCoordinates: Coordinate[] = geometry.getCoordinates();
+
+                //transformace na jiný než výchozí souřadnicový systém
                 const transformedCoordinates: number[][] =
                     rawCoordinates.map(transformCoordinate);
 
+                //výpočet vlastností individuální linie
                 const results: SegmentData[] = calculateAllProperties(
                     transformedCoordinates
                 );
 
+                //aktualizace stavu dat
                 setSegmentData((prevData) => {
+                    //získání existující polylinie
                     const existingLineIndex = prevData.findIndex(
                         (line) => line.id === id
                     );
 
+                    //pokud existuje -> vytvoří kopii aktuálních dat o polylinii a nahradí jimi stará data polylinie
                     if (existingLineIndex !== -1) {
-                        // Aktualizujeme existující polyčáru
+                        //
                         const updatedData = [...prevData];
                         updatedData[existingLineIndex] = {
                             id,
@@ -492,22 +503,21 @@ const ImportMapComponent: React.FC = () => {
                         };
                         return updatedData;
                     } else {
-                        // Přidáme novou polyčáru
+                        //pokud neexistuje, přidá jako novou polylinii
                         return [...prevData, { id, segments: results }];
                     }
                 });
             }
         };
 
-        // Funkce pro ukončení kreslení pravým klikem
+        //metoda pro ukončení kreslení pravým klikem a přidání listeneru na pravý klik
         const handleRightClick = (event: MouseEvent) => {
-            event.preventDefault(); // Zabrání zobrazení kontextového menu
-            drawInteraction.finishDrawing(); // Ukončení aktuálního kreslení
+            event.preventDefault();
+            drawInteraction.finishDrawing();
         };
-
-        // Přidání listeneru na pravý klik
         map.getViewport().addEventListener("contextmenu", handleRightClick);
 
+        //cleanup funkce -> odpojení od DOM a zrušení pravokliku, jakožto ukončení kreslení
         return () => {
             map.setTarget(undefined);
             map.getViewport().removeEventListener(
@@ -517,28 +527,29 @@ const ImportMapComponent: React.FC = () => {
         };
     }, [polylineCounter]);
 
+    //-------------------------------------------------------------------------------------------------------------- useEffect()
+    //metoda pro zobrazování, či skrývání informačních štítků
     useEffect(() => {
+        //kontrola zda existuje vektorový zdroj
         if (vectorSourceRef.current) {
             const vectorSource = vectorSourceRef.current;
 
-            // Získej všechny informační štítky
+            //vybere pouze všechny ty štítky, které byly dříve označeny jako informační - "info"
             const infoLabels = vectorSource.getFeatures().filter((feature) => {
                 return (
                     feature.get("isLabel") === true &&
-                    feature.get("type") === "info" // Identifikátor informačních štítků
+                    feature.get("type") === "info"
                 );
             });
 
-            // Skrýt nebo zobrazit informační štítky
+            //skrytí nebo zobrazení informačnchí štítků -> když html prvek checked => true, tak zobrazí štítek, a naopak
             infoLabels.forEach((label) => {
                 if (showInfoLabels) {
-                    // Obnovit původní styl
                     const originalStyle = label.get("originalStyle");
                     if (originalStyle) {
                         label.setStyle(originalStyle);
                     }
                 } else {
-                    // Skrýt štítek
                     label.setStyle(undefined);
                 }
             });
@@ -548,22 +559,20 @@ const ImportMapComponent: React.FC = () => {
     return (
         <div className="container-fluid mt-4">
             <div className="row">
-                {/* Mapa */}
+                {/* mapa */}
                 <div className="col-lg-6 col-md-12 mb-4">
                     <div className="card">
                         <div className="card-header bg-primary text-white">
                             <h5 className="mb-0 tooltip-container">
                                 Mapa
-                                {/* Otazník s toggle funkcí */}
+                                {/* toggle nápověda */}
                                 <i
                                     className="bi bi-question-circle ms-2 tooltip-icon"
                                     onClick={() =>
                                         setShowTooltip((prev) => !prev)
                                     }></i>
-                                {/* Tooltip s obsahem */}
                                 {showTooltip && (
                                     <div className="tooltip-box">
-                                        {/* Zavírací tlačítko */}
                                         <button
                                             className="close-tooltip"
                                             onClick={() =>
@@ -601,6 +610,7 @@ const ImportMapComponent: React.FC = () => {
                                 )}
                             </h5>
                         </div>
+                        {/* vykreslení mapy a popup okna */}
                         <div className="card-body p-0">
                             <div className="map-style" ref={mapContainerRef}>
                                 <div ref={popupRef} className="ol-popup">
@@ -610,7 +620,7 @@ const ImportMapComponent: React.FC = () => {
                         </div>
                     </div>
                 </div>
-                {/* Ovládání a nastavení */}
+                {/* ovládání a nastavení */}
                 <div className="col-lg-6 col-md-12">
                     <div className="card mb-4">
                         <div className="card-header bg-secondary text-white">
@@ -618,6 +628,7 @@ const ImportMapComponent: React.FC = () => {
                         </div>
                         <div className="card-body">
                             <form className="row g-3">
+                                {/* jednotky vzdálenosti */}
                                 <div className="col-md-6">
                                     <label
                                         htmlFor="distanceUnit"
@@ -637,7 +648,7 @@ const ImportMapComponent: React.FC = () => {
                                         <option value="mil">Míle</option>
                                     </select>
                                 </div>
-
+                                {/* jednotky úhlů */}
                                 <div className="col-md-6">
                                     <label
                                         htmlFor="angleUnit"
@@ -657,7 +668,7 @@ const ImportMapComponent: React.FC = () => {
                                         <option value="rad">Radiány</option>
                                     </select>
                                 </div>
-
+                                {/* checkbox pro zobrazení/skrytí štítků */}
                                 <div className="col-md-12">
                                     <div className="form-check">
                                         <input
@@ -678,7 +689,7 @@ const ImportMapComponent: React.FC = () => {
                                         </label>
                                     </div>
                                 </div>
-
+                                {/* tlačítko pro smazání všech vytvořených objektů */}
                                 <div className="col-md-12 text-center">
                                     <button
                                         type="button"
@@ -691,7 +702,7 @@ const ImportMapComponent: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Tabulka dat */}
+                    {/* tabulka s daty */}
                     <div className="card">
                         <div className="card-header bg-success text-white">
                             <h5>Data všech polylinií</h5>
@@ -772,7 +783,7 @@ const ImportMapComponent: React.FC = () => {
                                                     </tr>
                                                 )
                                             )}
-                                            {/* Zobrazení celkové délky pro aktuální polylinii */}
+                                            {/*zobrazení celkové délky pro aktuální polylinii*/}
                                             <tr>
                                                 <td
                                                     colSpan={6}
