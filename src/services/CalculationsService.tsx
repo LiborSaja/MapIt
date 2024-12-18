@@ -1,6 +1,15 @@
 import { SegmentData } from "../interfaces/Interface";
 import { toLonLat } from "ol/proj";
 import { Coordinate } from "ol/coordinate";
+import { fromLonLat } from "ol/proj";
+
+//transformace do web mercator před výpočtem
+export const transformToCartesian = (
+    coord: [number, number]
+): [number, number] => {
+    const transformed = fromLonLat([coord[1], coord[0]]);
+    return [transformed[0], transformed[1]];
+};
 
 //převádí souřadnice z projekce EPSG:3857 (web mercator) na EPSG:4326 (lon, lat), pomocí metody toLonLat()
 export const transformCoordinate = (coord: Coordinate): number[] => {
@@ -18,6 +27,24 @@ export const radToDeg = (radians: number): number => {
     return (radians * 180) / Math.PI;
 };
 
+//výpočet délky a azimutu mezi body na mapě
+export const calculateLineProperties = (
+    coord1: [number, number],
+    coord2: [number, number]
+): { azimuth: number; length: number } => {
+    const lengthInMeters = haversineDistance(coord1, coord2);
+    const lengthInKilometers = lengthInMeters / 1000;
+
+    const azimuth = calculateAzimuth(
+        coord1[0],
+        coord1[1],
+        coord2[0],
+        coord2[1]
+    );
+
+    return { azimuth, length: lengthInKilometers };
+};
+
 //výpočet směru - azimutu, využívá trigonometrické funkce
 export const calculateAzimuth = (
     lat1: number,
@@ -31,39 +58,14 @@ export const calculateAzimuth = (
     lon2 = degToRad(lon2);
 
     const deltaLon = lon2 - lon1;
-
     const x = Math.sin(deltaLon) * Math.cos(lat2);
     const y =
         Math.cos(lat1) * Math.sin(lat2) -
         Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
+    let azimuth = Math.atan2(x, y);
+    azimuth = (radToDeg(azimuth) + 360) % 360;
 
-    const azimuth = Math.atan2(x, y);
-
-    return (radToDeg(azimuth) + 360) % 360;
-};
-
-//výpočet vnitřního úhlu mezi azimuty (dvěma liniemi polylinie)
-export const calculateAngleFromAzimuths = (
-    azimuth1: number,
-    azimuth2: number
-): number => {
-    // Převod azimutů na radiány
-    const azimuth1Rad = degToRad(azimuth1);
-    const azimuth2Rad = degToRad(azimuth2);
-
-    // Vytvoření vektorů ze dvou azimutů
-    const vector1 = [Math.cos(azimuth1Rad), Math.sin(azimuth1Rad)];
-    const vector2 = [Math.cos(azimuth2Rad), Math.sin(azimuth2Rad)];
-
-    // Skalární a vektorový součin
-    const dotProduct = vector1[0] * vector2[0] + vector1[1] * vector2[1];
-    const crossProduct = vector1[0] * vector2[1] - vector1[1] * vector2[0];
-
-    // Výpočet úhlu pomocí atan2
-    const angle = Math.atan2(Math.abs(crossProduct), dotProduct);
-
-    // Převod na stupně
-    return radToDeg(angle);
+    return azimuth;
 };
 
 //výpočet vzdálenosti mezi dvěma body, bere v úvahu zakřivení země
@@ -89,41 +91,74 @@ export const haversineDistance = (
     return distance;
 };
 
-//výpočet délky a azimutu mezi body na mapě
-export const calculateLineProperties = (
-    coord1: [number, number],
-    coord2: [number, number]
-): { azimuth: number; length: number } => {
-    const lengthInMeters = haversineDistance(coord1, coord2);
-    const lengthInKilometers = lengthInMeters / 1000;
+//výpočet vnitřního úhlu mezi dvěma azimuty
+export const calculateInnerAngleFromAzimuths = (
+    azimuth1: number,
+    azimuth2: number
+): number => {
+    let angle = Math.abs(azimuth1 - azimuth2);
 
-    const azimuth = calculateAzimuth(
-        coord1[0],
-        coord1[1],
-        coord2[0],
-        coord2[1]
-    );
+    //pokud je úhel větší než 180°, vezme doplněk do 360° (vnitřní úhel)
+    if (angle > 180) {
+        angle = 360 - angle;
+    }
 
-    return { azimuth, length: lengthInKilometers };
+    return angle;
 };
 
-//výpočet úhlu mezi třemi body
+//vypočet vnitřního úhlu mezi dvěma liniemi, které jsou definovány třemi body
 export const calculateAngle = (
     prev: [number, number],
     current: [number, number],
     next: [number, number]
 ): number => {
-    const azimuth1 = calculateAzimuth(prev[0], prev[1], current[0], current[1]);
-    const azimuth2 = calculateAzimuth(current[0], current[1], next[0], next[1]);
+    //převod z geodetického systému do kartezského pro přesnost
+    const transformedPrev = transformToCartesian(prev);
+    const transformedCurrent = transformToCartesian(current);
+    const transformedNext = transformToCartesian(next);
 
-    return calculateAngleFromAzimuths(azimuth1, azimuth2);
+    const angle = calculateInnerAngle(
+        transformedPrev,
+        transformedCurrent,
+        transformedNext
+    );
+
+    return angle;
 };
 
+//vypočet úhlu mezi dvěma vektory, které jsou definovány třemi body
+export const calculateInnerAngle = (
+    prev: [number, number],
+    current: [number, number],
+    next: [number, number]
+): number => {
+    //definice vektorů (x = lon, y = lat)
+    const vector1 = [prev[1] - current[1], prev[0] - current[0]];
+    const vector2 = [next[1] - current[1], next[0] - current[0]];
+
+    //skalární součin
+    const dotProduct = vector1[0] * vector2[0] + vector1[1] * vector2[1];
+
+    //délky vektorů pomocí pythagorovy věty
+    const magnitude1 = Math.sqrt(vector1[0] ** 2 + vector1[1] ** 2);
+    const magnitude2 = Math.sqrt(vector2[0] ** 2 + vector2[1] ** 2);
+
+    //výpočet úhlu v radiánech
+    let angleRad = Math.acos(dotProduct / (magnitude1 * magnitude2));
+
+    //převod úhlu na stupně
+    let angleDeg = (angleRad * 180) / Math.PI;
+
+    return angleDeg;
+};
+
+//zpracovává seznam souřadnic a vypočítá vlastnosti jednotlivých linií
 export const calculateAllProperties = (
     coordinates: number[][]
 ): SegmentData[] => {
     const results: SegmentData[] = [];
 
+    //výpočet délky a azimutu pro každou linii
     for (let i = 0; i < coordinates.length - 1; i++) {
         const coord1 = [coordinates[i][1], coordinates[i][0]] as [
             number,
@@ -144,6 +179,7 @@ export const calculateAllProperties = (
         });
     }
 
+    //výpočet úhlů mezi sousedními liniemi
     for (let i = 1; i < results.length; i++) {
         const prev = [coordinates[i - 1][1], coordinates[i - 1][0]] as [
             number,
@@ -164,16 +200,19 @@ export const calculateAllProperties = (
     return results;
 };
 
+//výpočet převodu kilometry/míle
 export const convertDistance = (value: number, unit: "km" | "mil"): string => {
     return unit === "km" ? value.toFixed(2) : (value * 0.621371).toFixed(2);
 };
 
+//výpočet převodu stupně/radiány
 export const convertAngle = (value: number, unit: "°" | "rad"): string => {
     return unit === "°"
         ? value.toFixed(2)
         : ((value * Math.PI) / 180).toFixed(2);
 };
 
+//výpočet celkové délky polylinie
 export const calculateTotalLength = (segments: SegmentData[]): number => {
     return segments.reduce((sum, segment) => sum + segment.length, 0);
 };

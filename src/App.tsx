@@ -14,16 +14,16 @@ const App: React.FC = () => {
     return (
         <Router>
             <div className="container-fluid">
-                {/* Navigační lišta */}
+                {/* navigační menu */}
                 <div className="row">
                     <div className="col">
                         <NavbarComponent />
                     </div>
                 </div>
 
-                {/* Obsah řízený React Routerem */}
+                {/* obsah řízený react routerem */}
                 <Routes>
-                    {/* Stránky */}
+                    {/* stránky */}
                     <Route path="/" element={<Navigate to="/about" />} />
                     <Route path="/about" element={<AboutComponent />} />
                     <Route path="/guide" element={<GuideComponent />} />
