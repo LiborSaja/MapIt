@@ -1,6 +1,6 @@
 import React from "react";
 import {
-    BrowserRouter as Router,
+    HashRouter as Router,
     Routes,
     Route,
     Navigate,
@@ -24,7 +24,14 @@ const App: React.FC = () => {
                 {/* obsah řízený react routerem */}
                 <Routes>
                     {/* stránky */}
-                    <Route path="/" element={<Navigate to="/about" />} />
+                    <Route
+                        path="/index.html"
+                        element={<Navigate to="/" replace />}
+                    />
+                    <Route
+                        path="/"
+                        element={<Navigate to="/about" replace />}
+                    />
                     <Route path="/about" element={<AboutComponent />} />
                     <Route path="/guide" element={<GuideComponent />} />
                     <Route path="/map" element={<MapComponent />} />

@@ -36,7 +36,10 @@ const GuideComponent: React.FC = () => {
                 </div>
                 <div className="carousel-inner">
                     <div className="carousel-item active">
-                        <img src="mapahl.jpg" alt="" />
+                        <img
+                            src={`${process.env.PUBLIC_URL}/mapahl.jpg`}
+                            alt="mapa"
+                        />
                         <div className="carousel-caption-below">
                             <h5 className="p-5 text-center">
                                 Vítejte v obrázkovém průvodci aplikací. Na
@@ -47,9 +50,9 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="rozhrani.jpg"
+                            src={`${process.env.PUBLIC_URL}/rozhrani.jpg`}
                             className="d-block w-100"
-                            alt="..."
+                            alt="kresleni"
                         />
                         <div className="carousel-caption-below">
                             <h6 className="p-5">
@@ -71,9 +74,9 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="modifikace.jpg"
+                            src={`${process.env.PUBLIC_URL}/modifikace.jpg`}
                             className="d-block w-100"
-                            alt="..."
+                            alt="modifikace"
                         />
                         <div className="carousel-caption-below">
                             <h5 className="p-5">
@@ -91,9 +94,9 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="mazani.jpg"
+                            src={`${process.env.PUBLIC_URL}/mazani.jpg`}
                             className="d-block w-100"
-                            alt="..."
+                            alt="mazani"
                         />
                         <div className="carousel-caption-below">
                             <h5 className="p-5">
@@ -108,9 +111,9 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="panely.jpg"
+                            src={`${process.env.PUBLIC_URL}/panely.jpg`}
                             className="d-block w-100"
-                            alt="..."
+                            alt="panely"
                         />
                         <div className="carousel-caption-below">
                             <h5 className="p-2">
