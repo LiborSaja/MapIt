@@ -36,7 +36,7 @@ const GuideComponent: React.FC = () => {
                 </div>
                 <div className="carousel-inner">
                     <div className="carousel-item active">
-                        <img src="mapahl.png" alt="" />
+                        <img src="mapahl.jpg" alt="" />
                         <div className="carousel-caption-below">
                             <h5 className="p-5 text-center">
                                 Vítejte v obrázkovém průvodci aplikací. Na
@@ -47,7 +47,7 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="rozhrani.png"
+                            src="rozhrani.jpg"
                             className="d-block w-100"
                             alt="..."
                         />
@@ -71,7 +71,7 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="modifikace.png"
+                            src="modifikace.jpg"
                             className="d-block w-100"
                             alt="..."
                         />
@@ -91,7 +91,7 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="mazani.png"
+                            src="mazani.jpg"
                             className="d-block w-100"
                             alt="..."
                         />
@@ -108,7 +108,7 @@ const GuideComponent: React.FC = () => {
                     </div>
                     <div className="carousel-item">
                         <img
-                            src="panely.png"
+                            src="panely.jpg"
                             className="d-block w-100"
                             alt="..."
                         />

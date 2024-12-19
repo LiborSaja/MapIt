@@ -23,8 +23,10 @@ const AboutComponent: React.FC = () => {
                     </p>
                     <p>
                         Pro seznámení s kompletní funkčností aplikace lze využít{" "}
-                        <Link to="/guide">průvodce</Link>.
+                        <Link to="/guide">průvodce</Link>. Ale na mapě je rovněž
+                        okno s nápovědou pro ovládání.
                     </p>
+
                     <hr />
 
                     <h2 className="text-success mt-3">Hlavní Funkce</h2>
