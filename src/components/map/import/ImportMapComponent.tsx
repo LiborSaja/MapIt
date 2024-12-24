@@ -18,8 +18,6 @@ import Text from "ol/style/Text";
 import RegularShape from "ol/style/RegularShape";
 import { defaults as defaultControls } from "ol/control";
 import { defaults as defaultInteractions } from "ol/interaction";
-import Extent from "ol/interaction/Extent";
-import { platformModifierKeyOnly } from "ol/events/condition";
 import { SegmentData, LineData } from "../../../interfaces/Interface";
 import {
     calculateAllProperties,
@@ -47,7 +45,7 @@ const ImportMapComponent: React.FC = () => {
     const [angleUnit, setAngleUnit] = useState<"°" | "rad">("°");
     //pro podmíněné zobrazení štítků na základě uživatelské volby
     const [showInfoLabels, setShowInfoLabels] = useState(true);
-    //pro zobrazení/skrytí pop-up tooltipu po kliknutí na polylinii
+    //pro zobrazení/skrytí pop-up tooltipu po kliknutí na ikonu nápovědy
     const [showTooltip, setShowTooltip] = useState(false);
     //pro statický obsah popupu
     const [popupContent] = useState<string>("");
@@ -103,7 +101,7 @@ const ImportMapComponent: React.FC = () => {
                 zoom: 12,
             }),
             overlays: [popup],
-            controls: defaultControls().extend([]),
+            controls: defaultControls(),
             interactions: defaultInteractions({ onFocusOnly: false }),
         });
 
@@ -135,28 +133,6 @@ const ImportMapComponent: React.FC = () => {
             condition: altKeyOnly,
         });
         map.addInteraction(modifyInteraction);
-
-        //příprava mechanizmu pro kreslení a modifikaci při stisknuté určité klávese
-        const extentInteraction = new Extent({
-            condition: platformModifierKeyOnly,
-            pointerStyle: [],
-        });
-        extentInteraction.setActive(false);
-        map.addInteraction(extentInteraction);
-
-        //aktivace interakce při stisknuté určité klávese
-        document.addEventListener("keydown", (event) => {
-            if (event.key === "ctrl") {
-                extentInteraction.setActive(true);
-            }
-        });
-
-        //deaktivace interakce při stisknuté určité klávese
-        document.addEventListener("keyup", (event) => {
-            if (event.key === "ctrl") {
-                extentInteraction.setActive(false);
-            }
-        });
 
         //metoda pro vytvoření štítků start a konec
         const createStartEndLabels = (
@@ -368,9 +344,7 @@ const ImportMapComponent: React.FC = () => {
                     );
 
                     //vytvoření nových liniových štítků, poté přidání do vektorového zdroje
-                    const polylineName = `Polylinie ${
-                        polylineId.split("-")[1]
-                    }`;
+                    const polylineName = polylineId;
                     const labelFeatures = createSegmentLabels(
                         geometry,
                         polylineName,
