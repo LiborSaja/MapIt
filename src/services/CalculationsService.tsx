@@ -7,7 +7,7 @@ import { fromLonLat } from "ol/proj";
 export const transformToCartesian = (
     coord: [number, number]
 ): [number, number] => {
-    const transformed = fromLonLat([coord[1], coord[0]]);
+    const transformed = fromLonLat(coord);
     return [transformed[0], transformed[1]];
 };
 
@@ -32,14 +32,17 @@ export const calculateLineProperties = (
     coord1: [number, number],
     coord2: [number, number]
 ): { azimuth: number; length: number } => {
-    const lengthInMeters = haversineDistance(coord1, coord2);
+    const lengthInMeters = haversineDistance(
+        [coord1[1], coord1[0]],
+        [coord2[1], coord2[0]]
+    );
     const lengthInKilometers = lengthInMeters / 1000;
 
     const azimuth = calculateAzimuth(
-        coord1[0],
         coord1[1],
-        coord2[0],
-        coord2[1]
+        coord1[0],
+        coord2[1],
+        coord2[0]
     );
 
     return { azimuth, length: lengthInKilometers };
@@ -160,11 +163,11 @@ export const calculateAllProperties = (
 
     //výpočet délky a azimutu pro každou linii
     for (let i = 0; i < coordinates.length - 1; i++) {
-        const coord1 = [coordinates[i][1], coordinates[i][0]] as [
+        const coord1 = [coordinates[i][0], coordinates[i][1]] as [
             number,
             number
         ];
-        const coord2 = [coordinates[i + 1][1], coordinates[i + 1][0]] as [
+        const coord2 = [coordinates[i + 1][0], coordinates[i + 1][1]] as [
             number,
             number
         ];
@@ -181,15 +184,15 @@ export const calculateAllProperties = (
 
     //výpočet úhlů mezi sousedními liniemi
     for (let i = 1; i < results.length; i++) {
-        const prev = [coordinates[i - 1][1], coordinates[i - 1][0]] as [
+        const prev = [coordinates[i - 1][0], coordinates[i - 1][1]] as [
             number,
             number
         ];
-        const current = [coordinates[i][1], coordinates[i][0]] as [
+        const current = [coordinates[i][0], coordinates[i][1]] as [
             number,
             number
         ];
-        const next = [coordinates[i + 1][1], coordinates[i + 1][0]] as [
+        const next = [coordinates[i + 1][0], coordinates[i + 1][1]] as [
             number,
             number
         ];
