@@ -32,17 +32,14 @@ export const calculateLineProperties = (
     coord1: [number, number],
     coord2: [number, number]
 ): { azimuth: number; length: number } => {
-    const lengthInMeters = haversineDistance(
-        [coord1[1], coord1[0]],
-        [coord2[1], coord2[0]]
-    );
+    const lengthInMeters = haversineDistance(coord1, coord2);
     const lengthInKilometers = lengthInMeters / 1000;
 
     const azimuth = calculateAzimuth(
-        coord1[1],
         coord1[0],
-        coord2[1],
-        coord2[0]
+        coord1[1],
+        coord2[0],
+        coord2[1]
     );
 
     return { azimuth, length: lengthInKilometers };
@@ -50,10 +47,10 @@ export const calculateLineProperties = (
 
 //výpočet směru - azimutu, využívá trigonometrické funkce
 export const calculateAzimuth = (
-    lat1: number,
     lon1: number,
-    lat2: number,
-    lon2: number
+    lat1: number,
+    lon2: number,
+    lat2: number
 ): number => {
     lat1 = degToRad(lat1);
     lon1 = degToRad(lon1);
@@ -78,8 +75,8 @@ export const haversineDistance = (
 ): number => {
     const R = 6371e3; //poloměr Země v metrech
 
-    const [lat1, lon1] = coord1.map((v) => (v * Math.PI) / 180);
-    const [lat2, lon2] = coord2.map((v) => (v * Math.PI) / 180);
+    const [lon1, lat1] = coord1.map(degToRad);
+    const [lon2, lat2] = coord2.map(degToRad);
 
     const deltaLat = lat2 - lat1;
     const deltaLon = lon2 - lon1;
@@ -92,21 +89,6 @@ export const haversineDistance = (
 
     const distance = R * c;
     return distance;
-};
-
-//výpočet vnitřního úhlu mezi dvěma azimuty
-export const calculateInnerAngleFromAzimuths = (
-    azimuth1: number,
-    azimuth2: number
-): number => {
-    let angle = Math.abs(azimuth1 - azimuth2);
-
-    //pokud je úhel větší než 180°, vezme doplněk do 360° (vnitřní úhel)
-    if (angle > 180) {
-        angle = 360 - angle;
-    }
-
-    return angle;
 };
 
 //vypočet vnitřního úhlu mezi dvěma liniemi, které jsou definovány třemi body
@@ -150,7 +132,7 @@ export const calculateInnerAngle = (
     let angleRad = Math.acos(dotProduct / (magnitude1 * magnitude2));
 
     //převod úhlu na stupně
-    let angleDeg = (angleRad * 180) / Math.PI;
+    let angleDeg = radToDeg(angleRad);
 
     return angleDeg;
 };
@@ -210,9 +192,7 @@ export const convertDistance = (value: number, unit: "km" | "mil"): string => {
 
 //výpočet převodu stupně/radiány
 export const convertAngle = (value: number, unit: "°" | "rad"): string => {
-    return unit === "°"
-        ? value.toFixed(2)
-        : ((value * Math.PI) / 180).toFixed(2);
+    return unit === "°" ? value.toFixed(2) : degToRad(value).toFixed(2);
 };
 
 //výpočet celkové délky polylinie

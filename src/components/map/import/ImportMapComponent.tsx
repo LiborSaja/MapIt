@@ -47,11 +47,8 @@ const ImportMapComponent: React.FC = () => {
     const [showInfoLabels, setShowInfoLabels] = useState(true);
     //pro zobrazení/skrytí pop-up tooltipu po kliknutí na ikonu nápovědy
     const [showTooltip, setShowTooltip] = useState(false);
-    //pro statický obsah popupu
-    const [popupContent] = useState<string>("");
     //pro četnost nakreslených polyčar a generování unikátních identifikátorů
     let polylineCounter = 0;
-
     //vyčištění vektorového zdroje mapy a resetování dat v tabulce
     const clearAllFeatures = () => {
         if (vectorSourceRef.current) {
@@ -553,7 +550,7 @@ const ImportMapComponent: React.FC = () => {
                                                 setShowTooltip(false)
                                             }
                                             aria-label="Close">
-                                            &times;
+                                            X
                                         </button>
 
                                         <h6 className="tooltip-header">
@@ -587,9 +584,7 @@ const ImportMapComponent: React.FC = () => {
                         {/* vykreslení mapy a popup okna */}
                         <div className="card-body p-0">
                             <div className="map-style" ref={mapContainerRef}>
-                                <div ref={popupRef} className="ol-popup">
-                                    {popupContent}
-                                </div>
+                                <div ref={popupRef} className="ol-popup"></div>
                             </div>
                         </div>
                     </div>
